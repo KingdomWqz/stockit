@@ -1,0 +1,12 @@
+[project]
+name = "stockit"
+version = "0.1.0"
+description = "AI Investment System V3 - Strategy iteration & auto-review platform"
+requires-python = ">=3.12"
+readme = "README.md"
+
+[dependency-groups]
+dev = []
+
+[project.scripts]
+stockit = "server.cli:main"
