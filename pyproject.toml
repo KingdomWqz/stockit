@@ -4,6 +4,11 @@ version = "0.1.0"
 description = "AI Investment System V3 - Strategy iteration & auto-review platform"
 requires-python = ">=3.12"
 readme = "README.md"
+dependencies = [
+    "akshare>=1.18.70",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+]
 
 [dependency-groups]
 dev = []
