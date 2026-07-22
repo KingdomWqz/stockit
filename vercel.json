@@ -1,0 +1,18 @@
+{
+  "services": [
+    {
+      "name": "backend",
+      "rootDirectory": "server",
+      "entrypoint": "main:app"
+    },
+    {
+      "name": "frontend",
+      "rootDirectory": "web",
+      "framework": "nextjs"
+    }
+  ],
+  "rewrites": [
+    { "source": "/svc/api/(.*)", "destination": "/api/$1", "service": "backend" },
+    { "source": "/(.*)", "destination": "/$1", "service": "frontend" }
+  ]
+}

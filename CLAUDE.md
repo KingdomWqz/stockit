@@ -12,19 +12,37 @@ Stockit is an AI Investment System V3 — a strategy iteration and auto-review p
 # Install Python dependencies
 cd server && uv sync
 
-# Run the server
-cd server && uv run stockit
-# or
-cd server && uv run uvicorn server.main:app --reload
+# Run the FastAPI backend locally
+cd server && uv run uvicorn main:app --reload --port 8000
+
+# Initialize Next.js frontend (one-time)
+cd web && pnpm install
+
+# Run the Next.js frontend locally
+cd web && pnpm dev
 ```
 
 ## Architecture
 
-- `server/` — FastAPI backend (Python project root, contains pyproject.toml)
-- `web/` — Next.js frontend application
-- `docs/` — Project documentation and plans
+```
+stockit/
+├── vercel.json       # Vercel Services config — routes /svc/api/* to backend
+├── server/           # FastAPI backend (Python project root)
+│   ├── pyproject.toml
+│   ├── uv.lock
+│   └── main.py       # FastAPI entry point: app = FastAPI()
+├── web/              # Next.js frontend
+└── docs/             # Project documentation and plans
+```
 
 ## Deployment
 
-- **Frontend** (`web/`): Deploy to Vercel, set Root Directory to `web`
-- **Backend** (`server/`): Deploy to Railway / Render / Fly.io, or a VPS
+The entire project deploys to Vercel as a single monorepo using Vercel Services:
+
+- **`vercel.json`** declares two services:
+  - `backend` — `server/` directory, FastAPI via `entrypoint: "main:app"`
+  - `frontend` — `web/` directory, Next.js
+- Rewrites route `/svc/api/*` → backend, everything else → frontend
+- Frontend calls the backend at `/svc/api/...` (same origin, no CORS issues in production)
+
+Local development runs both services separately (see Commands above).

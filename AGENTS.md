@@ -15,6 +15,7 @@ AI Investment System V3 — a strategy iteration and auto-review platform for Ch
 
 ## Directory Structure
 
+- `vercel.json` — Vercel Services config, routes `/svc/api/*` to backend
 - `server/` — FastAPI backend application (Python project root, contains pyproject.toml)
 - `web/` — Next.js frontend application
 - `docs/` — Project documentation and planning artifacts
@@ -23,9 +24,12 @@ AI Investment System V3 — a strategy iteration and auto-review platform for Ch
 
 - Use `uv` for all Python package operations (not pip), run from `server/`
 - Python code follows standard PEP 8 style
-- The frontend and backend are independent deployment units, decoupled via REST APIs
+- Frontend calls backend at `/svc/api/...` (same origin, handled by Vercel rewrites)
 
 ## Deployment
 
-- **Frontend** (`web/`): Deploy to Vercel, set Root Directory to `web`
-- **Backend** (`server/`): Deploy to Railway / Render / Fly.io, or a VPS
+The entire project deploys to Vercel as a single monorepo using Vercel Services:
+
+- **Backend** (`server/`): FastAPI, declared as `backend` service in `vercel.json`
+- **Frontend** (`web/`): Next.js, declared as `frontend` service in `vercel.json`
+- Rewrites: `/svc/api/*` → backend, `/*` → frontend

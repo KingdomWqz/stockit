@@ -12,6 +12,3 @@ dependencies = [
 
 [dependency-groups]
 dev = []
-
-[project.scripts]
-stockit = "server.cli:main"
