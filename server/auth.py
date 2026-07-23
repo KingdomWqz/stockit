@@ -1,6 +1,8 @@
-import jwt
 import time
-from fastapi import APIRouter, HTTPException
+
+import jwt
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -8,10 +10,25 @@ router = APIRouter()
 SECRET = "stockit-dev-secret"
 TEST_USER = {"id": 1, "username": "admin", "password": "admin123"}
 
+security = HTTPBearer(auto_error=False)
+
 
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> dict:
+    """从 Bearer token 解码 JWT，返回当前用户；缺失或无效时返回 401。"""
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(status_code=401, detail="未认证")
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="token 无效或已过期")
+    return {"user_id": payload.get("user_id"), "username": payload.get("username")}
 
 
 @router.post("/auth/login")
