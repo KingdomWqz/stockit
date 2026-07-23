@@ -1,12 +1,11 @@
 # Stockit
 
-个人量化选股工具 — 基于 akshare 获取中国 A 股数据，提供股票筛选与分析功能。
+个人量化选股工具 — 基于 akshare 获取A股数据，提供股票筛选与分析功能。
 
 ## 技术栈
 
 - **后端**: Python 3.12+ / FastAPI / uvicorn / akshare
 - **前端**: Next.js
-- **部署**: Vercel（`/svc/api/*` 反向代理至后端）
 - **数据**: 阿里云 RDS MySQL
 
 ## 目录

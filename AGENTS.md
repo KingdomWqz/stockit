@@ -15,7 +15,6 @@
 
 ## 目录结构
 
-- `vercel.json` - Vercel Services 配置,将 `/svc/api/*` 路由到后端
 - `server/` - FastAPI 后端应用(Python 项目根目录,含 `pyproject.toml`)
 - `web/` - Next.js 前端应用
 - `docs/` - 项目文档与规划资料
@@ -24,4 +23,4 @@
 
 - 所有 Python 包操作使用 `uv`(而非 pip),在 `server/` 下运行
 - Python 代码遵循标准 PEP 8 风格
-- 前端通过 `/svc/api/...` 调用后端(同源,由 Vercel 重写处理)
+- 前端通过 `/svc/api/...` 调用后端(同源反向代理)
