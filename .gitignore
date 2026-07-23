@@ -32,3 +32,9 @@ Thumbs.db
 *.log
 # Codex (local MCP config)
 .codex/
+
+# Runtime PIDs
+.pids/
+
+# Terminal logs
+typescript

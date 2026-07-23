@@ -64,28 +64,25 @@ export default function KlineChart({ data }: KlineChartProps) {
     const ma20 = calcMA(data, 20);
     const ma60 = calcMA(data, 60);
 
-    const maConfigs: [ReturnType<typeof calcMA>, string, string][] = [
-      [ma5, '#f5f5f5', '#f5f5f5'],
-      [ma10, '#fbbf24', '#fbbf24'],
-      [ma20, '#a855f7', '#a855f7'],
-      [ma60, '#22c55e', '#22c55e'],
+    const maConfigs: [ReturnType<typeof calcMA>, string][] = [
+      [ma5, '#f5f5f5'],
+      [ma10, '#fbbf24'],
+      [ma20, '#a855f7'],
+      [ma60, '#22c55e'],
     ];
 
-    const maColors = ['#f5f5f5', '#fbbf24', '#a855f7', '#22c55e'];
-
-    const maSeries = maConfigs.map(([maData], i) => {
+    maConfigs.forEach(([maData, color]) => {
       const s = chart.addSeries(LineSeries, {
-        color: maColors[i],
+        color,
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
       });
       s.setData(maData);
-      return s;
     });
 
     const candleData = data.map((d) => ({
-      time: d.date as any,
+      time: d.date,
       open: d.open,
       high: d.high,
       low: d.low,
@@ -93,7 +90,7 @@ export default function KlineChart({ data }: KlineChartProps) {
     }));
 
     const volData = data.map((d) => ({
-      time: d.date as any,
+      time: d.date,
       value: d.volume,
       color: d.close >= d.open ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)',
     }));
