@@ -1,4 +1,4 @@
-# Stockit 前端实施计划
+# Stockit 前端规格说明文档
 
 ## 1. 功能范围
 
@@ -140,4 +140,4 @@ interface KlineData {
 
 ## 8. 实施任务
 
-详见 [tasks.md](./tasks.md)，共 3 个 Phase、16 个独立任务，每个任务 = 一个 commit = 一个 MR。
+详见 [frontend-tasks.md](./frontend-tasks.md)，共 3 个 Phase、16 个独立任务，每个任务 = 一个 commit = 一个 MR。
