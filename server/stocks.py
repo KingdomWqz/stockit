@@ -10,15 +10,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_CODE_NAME_CACHE = None
-
-
-def _get_code_name_df():
-    global _CODE_NAME_CACHE
-    if _CODE_NAME_CACHE is None:
-        _CODE_NAME_CACHE = ak.stock_info_a_code_name()
-    return _CODE_NAME_CACHE
-
 
 def _market_label(code: str) -> str:
     if code.startswith("6"):

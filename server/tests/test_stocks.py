@@ -94,3 +94,10 @@ def test_search_limits_to_20(client, fake_db, auth_headers):
 
     assert resp.status_code == 200
     assert len(resp.json()) == 20
+
+
+def test_legacy_in_memory_cache_removed():
+    import stocks
+
+    assert not hasattr(stocks, "_CODE_NAME_CACHE")
+    assert not hasattr(stocks, "_get_code_name_df")
