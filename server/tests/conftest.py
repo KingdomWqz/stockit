@@ -152,3 +152,12 @@ def make_token(username="admin", user_id=1, exp_delta=86400 * 7):
 @pytest.fixture
 def auth_headers():
     return {"Authorization": f"Bearer {make_token()}"}
+
+
+@pytest.fixture
+def client():
+    """FastAPI TestClient bound to the real app (no live server)."""
+    from fastapi.testclient import TestClient
+    from main import app
+
+    return TestClient(app)
