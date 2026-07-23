@@ -15,3 +15,7 @@
 | `server/` | FastAPI 后端（Python，`uv` 管理依赖） |
 | `web/` | Next.js 前端 |
 | `docs/` | 数据库设计、前端规格、任务规划等文档 |
+
+
+https://deepwiki.com/myhhub/stock
+https://github.com/myhhub/stock

@@ -33,3 +33,9 @@ def test_login_endpoint_is_open(client):
     )
     assert resp.status_code == 200
     assert "token" in resp.json()
+
+
+def test_health_endpoint_under_svc_api(client):
+    resp = client.get("/svc/api/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
