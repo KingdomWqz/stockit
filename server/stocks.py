@@ -4,6 +4,8 @@ import requests
 from fastapi import APIRouter, HTTPException, Query
 import akshare as ak
 
+import db_client
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -64,6 +66,15 @@ def _fetch_sina_spot(code: str) -> dict | None:
         }
     except Exception:
         return None
+
+
+@router.post("/stocks/sync")
+def sync_stocks():
+    try:
+        df = ak.stock_info_a_code_name()
+    except Exception:
+        raise HTTPException(status_code=502, detail="股票列表获取失败")
+    return db_client.sync_stock_list(df)
 
 
 @router.get("/stocks/search")
