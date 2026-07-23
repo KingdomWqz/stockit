@@ -91,3 +91,36 @@ def clean_expired_data(retention_days: int = 90) -> int | None:
     except Exception as e:
         logger.error("调用清理存储过程失败: %s", e)
         return None
+
+
+def sync_stock_list(df: pd.DataFrame, batch_size: int = 500) -> dict:
+    """将沪深京 A 股全集 UPSERT 到 ``stocks`` 表，并退市不在列表中的股票。
+
+    :param df: AKShare ``stock_info_a_code_name()`` 返回的 DataFrame，需含 code、name
+    :param batch_size: 单批 UPSERT/UPDATE 的记录数
+    :return: ``{"total", "upserted", "deactivated"}`` 同步统计
+    """
+    client = get_client()
+
+    # 1. 查询当前在市 (is_active=true) 的 code 集合
+    resp = client.table("stocks").select("code").eq("is_active", True).execute()
+    existing_active = {row["code"] for row in resp.data}
+
+    # 2. 构造记录并分批 UPSERT，显式带 is_active=True 以支持重新上市自动激活
+    records = [
+        {"code": str(row["code"]), "name": str(row["name"]), "is_active": True}
+        for row in df.to_dict(orient="records")
+    ]
+    total = len(records)
+    for i in range(0, total, batch_size):
+        batch = records[i:i + batch_size]
+        client.table("stocks").upsert(batch, on_conflict="code").execute()
+
+    # 3. 退市：现有 active 集合 - 新列表 code 集合，分批置 is_active=False
+    new_codes = {row["code"] for row in records}
+    to_deactivate = list(existing_active - new_codes)
+    for i in range(0, len(to_deactivate), batch_size):
+        batch = to_deactivate[i:i + batch_size]
+        client.table("stocks").update({"is_active": False}).in_("code", batch).execute()
+
+    return {"total": total, "upserted": total, "deactivated": len(to_deactivate)}
