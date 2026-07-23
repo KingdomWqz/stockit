@@ -79,17 +79,18 @@ def sync_stocks():
 
 @router.get("/stocks/search")
 def search_stocks(keyword: str = Query(..., min_length=1)):
-    try:
-        df = _get_code_name_df()
-    except Exception:
-        raise HTTPException(status_code=502, detail="股票列表获取失败")
-
-    mask = df["name"].str.contains(keyword, na=False) | df["code"].str.startswith(keyword, na=False)
-    matched = df[mask].head(20)
-
+    resp = (
+        db_client.get_client()
+        .table("stocks")
+        .select("code,name")
+        .eq("is_active", True)
+        .or_(f"name.ilike.%{keyword}%,code.like.{keyword}%")
+        .limit(20)
+        .execute()
+    )
     return [
         {"code": row["code"], "name": row["name"], "market": _market_label(row["code"])}
-        for _, row in matched.iterrows()
+        for row in resp.data
     ]
 
 
