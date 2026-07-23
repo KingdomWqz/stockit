@@ -6,7 +6,7 @@
 
 - **后端**: Python 3.12+ / FastAPI / uvicorn / akshare
 - **前端**: Next.js
-- **数据**: 阿里云 RDS MySQL
+- **数据**: Supabase PostgreSQL
 
 ## 目录
 
