@@ -1,35 +1,27 @@
 # AGENTS.md
 
-This file provides guidance to AI coding agents when working with code in this repository.
+本文件为 AI 编程代理在本仓库中工作时提供指引。
 
-## Project: Stockit
+## 项目:Stockit
 
-AI Investment System V3 — a strategy iteration and auto-review platform for Chinese stock markets.
+选股器
 
-## Tech Stack
+## 技术栈
 
-- **Python 3.12+** with `uv` for package management
-- **FastAPI** + **uvicorn** for the backend server
-- **Next.js** for the frontend framework
-- **akshare** for Chinese stock market data
+- **Python 3.12+**,使用 `uv` 管理依赖
+- **FastAPI** + **uvicorn** 作为后端服务器
+- **Next.js** 作为前端框架
+- **akshare** 获取中国股市数据
 
-## Directory Structure
+## 目录结构
 
-- `vercel.json` — Vercel Services config, routes `/svc/api/*` to backend
-- `server/` — FastAPI backend application (Python project root, contains pyproject.toml)
-- `web/` — Next.js frontend application
-- `docs/` — Project documentation and planning artifacts
+- `vercel.json` - Vercel Services 配置,将 `/svc/api/*` 路由到后端
+- `server/` - FastAPI 后端应用(Python 项目根目录,含 `pyproject.toml`)
+- `web/` - Next.js 前端应用
+- `docs/` - 项目文档与规划资料
 
-## Conventions
+## 约定
 
-- Use `uv` for all Python package operations (not pip), run from `server/`
-- Python code follows standard PEP 8 style
-- Frontend calls backend at `/svc/api/...` (same origin, handled by Vercel rewrites)
-
-## Deployment
-
-The entire project deploys to Vercel as a single monorepo using Vercel Services:
-
-- **Backend** (`server/`): FastAPI, declared as `backend` service in `vercel.json`
-- **Frontend** (`web/`): Next.js, declared as `frontend` service in `vercel.json`
-- Rewrites: `/svc/api/*` → backend, `/*` → frontend
+- 所有 Python 包操作使用 `uv`(而非 pip),在 `server/` 下运行
+- Python 代码遵循标准 PEP 8 风格
+- 前端通过 `/svc/api/...` 调用后端(同源,由 Vercel 重写处理)
