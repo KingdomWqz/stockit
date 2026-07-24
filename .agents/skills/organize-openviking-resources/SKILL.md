@@ -3,6 +3,10 @@ name: organize-openviking-resources
 description: 整理 OpenViking Resource 资源的工作流技能。Use when the user asks to organize, merge, rename, deduplicate, verify, or maintain OpenViking Resource documents, directories, indexes, or resource metadata.
 ---
 
+# doc
+
+https://docs.volcengine.com/docs/84313/2375493?lang=zh
+
 # Organize OpenViking Resources
 
 核心思路：把上下文当作文件系统来管理

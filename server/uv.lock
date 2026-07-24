@@ -512,30 +512,6 @@ wheels = [
 ]
 
 [[package]]
-name = "inngest"
-version = "0.5.19"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx" },
-    { name = "jcs" },
-    { name = "pydantic" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/27/c8/30524cd80447ba6abff85f4c2a3a536da9a55a6bb6d997cddfe2576076a1/inngest-0.5.19.tar.gz", hash = "sha256:f7be69f9dc4b4bd2d4ceab06e2a4e8cdbf48bb705904faccb926ba23224637e0", size = 109356, upload-time = "2026-06-23T19:37:30.29Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/fb/e395348a44fe2332973db228c90c1f2ca9be921bdc8aa3d06dfaa50e63c9/inngest-0.5.19-py3-none-any.whl", hash = "sha256:1d4804c49c0a4e3e4bb8adf603f19a2daf2d433ba743bd8958116f6c76a9b028", size = 151683, upload-time = "2026-06-23T19:37:29.032Z" },
-]
-
-[[package]]
-name = "jcs"
-version = "0.2.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/47/e5/9d547f0d42ba00f68eec773aa7b2145e0c0335eb632cbaf519f480a429af/jcs-0.2.1.tar.gz", hash = "sha256:9f20360b2f3b0a410d65493b448f96306d80e37fb46283f3f4aa5db2c7c1472b", size = 6886, upload-time = "2022-04-10T14:41:24.904Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c0/d4/9a99bc15266a842bd14a1913afdb05182888ebab035666c1ce8a64537ca2/jcs-0.2.1-py3-none-any.whl", hash = "sha256:e23a3e1de60f832d33cd811bb9c3b3be79219cdf95f63b88f0972732c3fa8476", size = 7603, upload-time = "2022-04-10T14:41:23.207Z" },
-]
-
-[[package]]
 name = "jsonpath"
 version = "0.82.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1244,7 +1220,6 @@ dependencies = [
     { name = "akshare" },
     { name = "baostock" },
     { name = "fastapi" },
-    { name = "inngest" },
     { name = "pydantic" },
     { name = "pyjwt" },
     { name = "python-dotenv" },
@@ -1262,7 +1237,6 @@ requires-dist = [
     { name = "akshare", specifier = ">=1.18.70" },
     { name = "baostock", specifier = ">=0.9.3" },
     { name = "fastapi", specifier = ">=0.115.0" },
-    { name = "inngest", specifier = ">=0.5.19" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pyjwt", specifier = ">=2.10.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },

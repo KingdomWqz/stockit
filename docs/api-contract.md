@@ -45,9 +45,6 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 | GET | `/svc/api/stocks/{code}/kline` | 是 | K 线数据 |
 | GET | `/svc/api/health` | 否 | 健康检查 |
 | GET | `/svc/api` | 否 | 根路径信息 |
-| POST | `/svc/api/inngest` | 否* | Inngest 函数端点(条件挂载) |
-
-> `inngest` 端点仅当配置 `INNGEST_DEV` 或 `INNGEST_SIGNING_KEY` 时挂载，由 Inngest 平台调用。
 
 ---
 
@@ -104,7 +101,7 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 { "detail": "股票列表获取失败" }
 ```
 
-**说明**：`upserted` 等于 `total`；同步耗时较长（约 5500 只），前端超时设为 10s，建议通过 Inngest 定时触发或单独调用。
+**说明**：`upserted` 等于 `total`；同步耗时较长（约 5500 只），前端超时设为 10s，建议单独/手动调用。
 
 ---
 
@@ -253,17 +250,6 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 ```json
 { "message": "Stockit API", "version": "0.1.0" }
 ```
-
-### 4.8 Inngest 端点
-
-`POST /svc/api/inngest`
-
-Inngest 函数服务端点，由 Inngest Dev Server / Cloud 轮询与调用。注册函数 `sync_stock_list`：
-- 触发：cron `0 8 * * 1-5`（默认）或事件 `stock/sync.requested`
-- 行为：签发 service JWT 调用 `POST /svc/api/stocks/sync`
-- 重试：2 次
-
-> 该端点条件挂载，未配置 Inngest 时不存在；非业务接口，前端不直接调用。
 
 ---
 

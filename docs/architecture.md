@@ -14,7 +14,6 @@ Stockit 是一个个人 A 股选股工具，提供**股票搜索**与 **K 线查
 - PyJWT（JWT 鉴权）
 - akshare（A 股数据）、requests（新浪行情）
 - supabase-py（数据库客户端，service role key 直连）
-- inngest（定时任务 / 后台函数）
 - pydantic（请求模型校验）
 
 **前端**(`web/`)
@@ -27,7 +26,6 @@ Stockit 是一个个人 A 股选股工具，提供**股票搜索**与 **K 线查
 
 **数据与基础设施**
 - Supabase PostgreSQL（云端持久化存储，免费套餐）
-- Inngest Dev Server / Inngest Cloud（定时任务调度）
 
 ## 3. 系统架构
 
@@ -74,7 +72,6 @@ server/
 ├── auth.py          # 鉴权：JWT 签发 + get_current_user 依赖
 ├── stocks.py        # 股票业务路由：搜索/快照/K线/同步
 ├── db_client.py     # Supabase 客户端封装：股票字典与指标读写
-├── inngest_app.py   # Inngest 定时任务：定时同步股票列表
 ├── pyproject.toml   # 依赖与 pytest 配置
 └── tests/           # 测试
 ```
@@ -84,7 +81,6 @@ server/
 - 注册 CORS 中间件：`allow_origins=["*"]`、允许凭证与全部方法/头
 - `auth_router` 挂载于 `/svc/api`（无鉴权）
 - `stocks_router` 挂载于 `/svc/api`，**整组依赖** `Depends(get_current_user)`，即所有股票接口均需 JWT
-- `inngest_app.register(app)` 条件挂载 Inngest 端点
 
 **分层职责**
 - `auth.py`：签发/校验 JWT，硬编码测试用户(`admin/admin123`)
@@ -161,7 +157,7 @@ AKShare stock_zh_a_daily()        ──kline──▶ 实时返回前端 (不�
 (本地计算指标)                     ──upsert──▶ stock_daily_data 表
 ```
 
-> 当前线上实际入库的只有 `stocks` 表(由 Inngest 定时同步)。`stock_daily_data` 指标写入由 `upsert_indicators` 提供，但尚无定时调用入口在主流程中触发。K 线与快照均为实时拉取不入库。
+> 当前线上实际入库的只有 `stocks` 表(由用户手动调用 `POST /svc/api/stocks/sync` 同步)。`stock_daily_data` 指标写入由 `upsert_indicators` 提供，但尚无定时调用入口在主流程中触发。K 线与快照均为实时拉取不入库。
 
 ## 7. 鉴权机制
 
@@ -178,37 +174,11 @@ AKShare stock_zh_a_daily()        ──kline──▶ 实时返回前端 (不�
 
 - 算法：HS256，密钥硬编码 `stockit-dev-secret`
 - Payload：`{user_id, username, exp}`，有效期 7 天(`86400*7` 秒)
-- 服务间调用：Inngest 函数以 `user_id=0, username=inngest-scheduler` 签发短期(1h)JWT 调用同步接口
 - 前端：token 存 `localStorage` + `cookie`，axios 拦截器自动注入
 
 > 安全提示：密钥与测试账号硬编码于 `auth.py`，仅适用于个人本地场景。
 
-## 8. 后台任务 (Inngest)
-
-`inngest_app.py` 注册一个定时函数 `sync_stock_list`，工作日定时同步沪深京 A 股全集到 `stocks` 表。
-
-```
-Inngest (Dev Server :8288 / Cloud)
-        │  轮询 /svc/api/inngest 发现函数
-        │  按 cron 触发
-        ▼
- sync_stock_list()
-        │  签发 service JWT (1h)
-        │  POST /svc/api/stocks/sync (Authorization: Bearer)
-        ▼
- stocks.sync_stocks() → db_client.sync_stock_list() → stocks 表 UPSERT
-```
-
-**配置(环境变量)**
-- `INNGEST_DEV=1`：启用本地 Dev Server 模式
-- `INNGEST_SIGNING_KEY`：云模式签名密钥
-- `STOCK_SYNC_CRON`：定时计划，默认 `0 8 * * 1-5`(UTC 工作日 08:00 ≈ 北京 16:00 收盘后)
-- `SYNC_API_BASE_URL`：同步目标，默认 `http://localhost:8000`
-- `STOCK_SYNC_TIMEOUT`：HTTP 超时秒数，默认 300
-
-> 未配置 `INNGEST_DEV` 或 `INNGEST_SIGNING_KEY` 时，`register()` 跳过挂载并打印警告，应用仍可正常启动。
-
-## 9. 部署与运行
+## 8. 部署与运行
 
 **本地开发**：`scripts/start.sh` 同时启动两端，`scripts/stop.sh` 停止。
 - Server：`cd server && uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload`
@@ -217,14 +187,12 @@ Inngest (Dev Server :8288 / Cloud)
 
 **环境变量**(`server/.env`)
 - `SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY`(必需)
-- Inngest 相关(可选，见上节)
 
 **端口约定**
 - 3000：Next.js 前端
 - 8000：FastAPI 后端
-- 8288：Inngest Dev Server(本地，外部进程)
 
-## 10. 已知差异(实现 vs 规格文档)
+## 9. 已知差异(实现 vs 规格文档)
 
 `docs/frontend-spec.md` 与 `docs/stock-sync-spec.md` 为早期规格，实际实现有以下差异，文档与接口契约以**实际代码**为准：
 
@@ -236,7 +204,7 @@ Inngest (Dev Server :8288 / Cloud)
 | K 线 period | `daily/weekly/monthly` | `day/week/month` |
 | 快照字段 | `change_pct/change_amt` | `change/changePercent` + `high/low/open/volume/turnover` |
 
-## 11. 相关文档
+## 10. 相关文档
 
 - [服务端接口契约](./api-contract.md)
 - [数据库设计](./database.md)
