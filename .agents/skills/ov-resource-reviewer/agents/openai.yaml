@@ -1,4 +1,0 @@
-interface:
-  display_name: "Organize OpenViking Resources"
-  short_description: "整理 OpenViking Resource 资源"
-  default_prompt: "Use $organize-openviking-resources to 整理 OpenViking Resource 资源。"
