@@ -13,7 +13,6 @@ dependencies = [
     "baostock>=0.9.3",
     "supabase>=2.31.0",
     "python-dotenv>=1.2.2",
-    "inngest>=0.5.19",
 ]
 
 [dependency-groups]

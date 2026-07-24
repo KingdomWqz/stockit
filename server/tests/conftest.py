@@ -6,11 +6,7 @@ Stockit uses (select / eq / in_ / or_ / limit / upsert / update). This lets
 behaviour-level tests run without a real database or network.
 """
 
-import os
 import time
-
-# 测试默认在 Inngest Dev 模式下运行，使 /svc/api/inngest 端点可被注册与测试。
-os.environ.setdefault("INNGEST_DEV", "1")
 
 import jwt
 import pytest

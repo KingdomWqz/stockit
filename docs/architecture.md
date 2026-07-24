@@ -4,7 +4,7 @@
 
 ## 1. 概述
 
-Stockit 是一个个人 A 股选股工具，提供**股票搜索**与 **K 线查看**两个核心功能。前端为 Next.js 单页应用，后端为 FastAPI，数据存储于 Supabase(PostgreSQL)，行情数据通过 AKShare 与新浪财经 API 实时获取，并通过 Inngest 定时同步股票列表入库。
+Stockit 是一个个人 A 股选股工具，提供**股票搜索**与 **K 线查看**两个核心功能。前端为 Next.js 单页应用，后端为 FastAPI，数据存储于 Supabase(PostgreSQL)，行情数据通过 AKShare 与新浪财经 API 实时获取。股票列表同步由用户手动调用 `POST /svc/api/stocks/sync` 接口触发入库。
 
 ## 2. 技术栈
 
