@@ -45,6 +45,7 @@ class _QueryBuilder:
         self._limit = None
         self._mode = "select"
         self._payload = None
+        self._conflict_keys = ("code",)
 
     def select(self, *cols):
         self._mode = "select"
@@ -75,6 +76,8 @@ class _QueryBuilder:
     def upsert(self, records, on_conflict=None):
         self._mode = "upsert"
         self._payload = records
+        if on_conflict:
+            self._conflict_keys = tuple(c.strip() for c in on_conflict.split(","))
         return self
 
     def update(self, payload):
@@ -97,6 +100,9 @@ class _QueryBuilder:
                 return True
         return False
 
+    def _same_key(self, row, rec):
+        return all(row.get(k) == rec.get(k) for k in self._conflict_keys)
+
     def execute(self):
         matched = [r for r in self._rows if self._matches(r)]
         if self._mode == "select":
@@ -108,7 +114,7 @@ class _QueryBuilder:
         if self._mode == "upsert":
             for rec in self._payload:
                 existing = next(
-                    (r for r in self._rows if r.get("code") == rec.get("code")), None
+                    (r for r in self._rows if self._same_key(r, rec)), None
                 )
                 if existing is None:
                     self._rows.append(dict(rec))
@@ -124,7 +130,7 @@ class _QueryBuilder:
 
 class FakeClient:
     def __init__(self):
-        self.tables = {"stocks": [], "stock_daily_data": []}
+        self.tables = {"stocks": [], "stock_daily_data": [], "stock_daily_quotes": []}
 
     def table(self, name):
         return _QueryBuilder(self.tables[name])

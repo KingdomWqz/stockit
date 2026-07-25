@@ -124,3 +124,64 @@ def sync_stock_list(df: pd.DataFrame, batch_size: int = 500) -> dict:
         client.table("stocks").update({"is_active": False}).in_("code", batch).execute()
 
     return {"total": total, "upserted": total, "deactivated": len(to_deactivate)}
+
+
+# 字段映射：AKShare 列名 -> 数据库列名
+_DAILY_QUOTES_COLUMN_MAP = {
+    "date": "trade_date",
+    "open": "open",
+    "high": "high",
+    "low": "low",
+    "close": "close",
+    "volume": "volume",
+    "amount": "amount",
+    "pct_chg": "pct_chg",
+    "turnover_rate": "turnover_rate",
+}
+
+
+def upsert_daily_quotes(
+    df_quotes: pd.DataFrame,
+    code: str,
+    adjust: str = "qfq",
+    batch_size: int = 500,
+) -> dict:
+    """将 AKShare 拉取的单股日线行情 UPSERT 到 ``stock_daily_quotes``。
+
+    :param df_quotes: AKShare 返回的 DataFrame,需含 ``date`` 列及 OHLCV 等字段
+    :param code: 股票代码,作为写入记录的 ``code`` 列
+    :param adjust: 复权口径,默认 ``"qfq"``
+    :param batch_size: 单批 UPSERT 大小,默认 500
+    :return: ``{"total": int, "upserted": int}`` 同步统计
+    :raises ValueError: 输入 DataFrame 缺少 ``date`` 列
+    """
+    if "date" not in df_quotes.columns:
+        raise ValueError("缺少必要字段: date")
+
+    if df_quotes.empty:
+        return {"total": 0, "upserted": 0}
+
+    # 仅保留映射表中存在的列,其余丢弃
+    valid_cols = [c for c in _DAILY_QUOTES_COLUMN_MAP if c in df_quotes.columns]
+    mapped = df_quotes[valid_cols].rename(columns=_DAILY_QUOTES_COLUMN_MAP)
+
+    # 日期统一为 YYYY-MM-DD 字符串,NaN -> None
+    mapped["trade_date"] = pd.to_datetime(mapped["trade_date"]).dt.strftime("%Y-%m-%d")
+    records = mapped.astype(object).where(pd.notnull(mapped), None).to_dict(orient="records")
+    for rec in records:
+        rec["code"] = code
+        rec["adjust"] = adjust
+
+    total = len(records)
+    client = get_client()
+    upserted = 0
+    for i in range(0, total, batch_size):
+        batch = records[i:i + batch_size]
+        client.table("stock_daily_quotes").upsert(
+            batch,
+            on_conflict="code,trade_date,adjust",
+        ).execute()
+        upserted += len(batch)
+
+    logger.info("写入 stock_daily_quotes: total=%d, upserted=%d", total, upserted)
+    return {"total": total, "upserted": upserted}
