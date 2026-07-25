@@ -208,7 +208,20 @@ API 测试：
 - 现有股票搜索接口不受影响。
 - 现有 K 线展示接口不受影响。
 
-## 6. 不做范围
+## 6. 与现有 `stock_daily_data` 表的协同
+
+新增的 `stock_daily_quotes` 不替代现有的 `stock_daily_data`，两者职责分层：
+
+- `stock_daily_quotes`：原始行情层（完整 OHLCV + `adjust`），长期保留，由本计划写入。
+- `stock_daily_data`：指标合并宽表（`close / pct_chg / turnover_rate` + MA / MACD / KDJ / RSI / BOLL），滚动 90 天，由既有指标流水线写入。
+
+落地时需要同步处理：
+
+- 在 `docs/sql/schema.sql` 末尾补一段 `CREATE TABLE IF NOT EXISTS public.stock_daily_quotes ...`（与本文档第 3 节保持一致），让 schema 文件与本计划同步。
+- 在 `server/` 新增 `upsert_daily_quotes` 时，只写 `stock_daily_quotes`，不要触碰 `stock_daily_data`，避免混淆两表各自的 `created_at / updated_at` 行为与写入路径。
+- `stock_daily_data` 上的 `clean_old_stock_data(90)` 存储过程无需调整，对新表没有影响。
+
+## 7. 不做范围
 
 本阶段明确不做：
 
@@ -220,7 +233,7 @@ API 测试：
 - 回测或收益验证。
 - 前端页面入口。
 
-## 7. 后续扩展
+## 8. 后续扩展
 
 后续可以在这个基础上继续扩展：
 
