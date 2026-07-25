@@ -69,7 +69,43 @@ CREATE INDEX IF NOT EXISTS idx_stock_daily_date_code
 ON public.stock_daily_data (trade_date DESC, code);
 
 -- ========================================================
--- 4. 定时清理存储过程 (Stored Procedure)
+-- 4. 原始日线行情表 (Daily Quotes)
+--    与 stock_daily_data 分层：本表存完整 OHLCV + adjust，
+--    由基础行情入库 API 写入；stock_daily_data 是指标宽表。
+-- ========================================================
+CREATE TABLE IF NOT EXISTS public.stock_daily_quotes (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    code VARCHAR(10) NOT NULL REFERENCES public.stocks(code),
+    trade_date DATE NOT NULL,
+    adjust VARCHAR(8) NOT NULL DEFAULT 'qfq',
+    open REAL,
+    high REAL,
+    low REAL,
+    close REAL,
+    volume BIGINT,
+    amount REAL,
+    pct_chg REAL,
+    turnover_rate REAL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_code_date_adjust UNIQUE (code, trade_date, adjust)
+);
+
+COMMENT ON TABLE public.stock_daily_quotes IS '原始日线行情表（完整 OHLCV + adjust），由基础行情入库 API 写入';
+
+-- 个人使用禁用 RLS 权限限制
+ALTER TABLE public.stock_daily_quotes DISABLE ROW LEVEL SECURITY;
+
+-- 唯一索引：单股按日期检索极速返回，同时加速 Upsert 冲突判定
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_daily_quotes_code_date_adjust
+ON public.stock_daily_quotes (code, trade_date DESC, adjust);
+
+-- 全局按日期检索：每日全市场扫描
+CREATE INDEX IF NOT EXISTS idx_stock_daily_quotes_date_code
+ON public.stock_daily_quotes (trade_date DESC, code);
+
+-- ========================================================
+-- 5. 定时清理存储过程 (Stored Procedure)
 --    默认保留近 90 天，返回删除行数；SECURITY INVOKER 遵循调用方权限。
 -- ========================================================
 CREATE OR REPLACE FUNCTION public.clean_old_stock_data(retention_days INT DEFAULT 90)
