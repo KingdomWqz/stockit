@@ -44,6 +44,7 @@ class _QueryBuilder:
         self._and_filters = []
         self._or_filters = []
         self._limit = None
+        self._range = None
         self._mode = "select"
         self._payload = None
         self._conflict_keys = ("code",)
@@ -76,6 +77,11 @@ class _QueryBuilder:
 
     def limit(self, n):
         self._limit = n
+        return self
+
+    def range(self, low, high):
+        """Mirror PostgREST inclusive ``[low, high]`` row window."""
+        self._range = (low, high)
         return self
 
     def upsert(self, records, on_conflict=None):
@@ -117,6 +123,9 @@ class _QueryBuilder:
     def execute(self):
         matched = [r for r in self._rows if self._matches(r)]
         if self._mode == "select":
+            if self._range is not None:
+                low, high = self._range
+                matched = matched[low:high + 1]
             if self._limit is not None:
                 matched = matched[: self._limit]
             if self._cols == ("*",):

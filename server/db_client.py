@@ -228,3 +228,37 @@ def upsert_daily_quotes(
         upserted += len(batch)
     logger.info("写入 stock_daily_quotes: total=%d, upserted=%d", total, upserted)
     return {"total": total, "upserted": upserted}
+
+
+def get_active_stock_codes(batch_size: int = 1000) -> list[str]:
+    """分页读取 ``stocks`` 表中所有 ``is_active=true`` 的股票代码。
+
+    PostgREST 单次 select 默认上限约 1000 行,故用 ``.range(from, to)`` 分页
+    直至取完全部活跃股票。供全市场批量行情同步使用。
+
+    :param batch_size: 单页行数,默认 1000
+    :return: 去重保序的活跃股票代码列表
+    """
+    client = get_client()
+    codes: list[str] = []
+    offset = 0
+    while True:
+        resp = (
+            client.table("stocks")
+            .select("code")
+            .eq("is_active", True)
+            .range(offset, offset + batch_size - 1)
+            .execute()
+        )
+        page = [row["code"] for row in (resp.data or [])]
+        codes.extend(page)
+        if len(page) < batch_size:
+            break
+        offset += batch_size
+    seen: set[str] = set()
+    unique: list[str] = []
+    for code in codes:
+        if code not in seen:
+            seen.add(code)
+            unique.append(code)
+    return unique

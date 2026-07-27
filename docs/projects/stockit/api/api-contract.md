@@ -43,6 +43,9 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 | GET | `/svc/api/stocks/search` | 是 | 搜索股票 |
 | GET | `/svc/api/stocks/{code}` | 是 | 个股实时快照 |
 | GET | `/svc/api/stocks/{code}/kline` | 是 | K 线数据 |
+| POST | `/svc/api/stocks/{code}/daily-quotes/sync` | 是 | 同步单股日线行情入库 |
+| POST | `/svc/api/stocks/daily-quotes/sync` | 是 | 全市场批量同步日线行情(后台) |
+| GET | `/svc/api/stocks/daily-quotes/sync/{job_id}` | 是 | 查询批量同步任务状态 |
 | GET | `/svc/api/health` | 否 | 健康检查 |
 | GET | `/svc/api` | 否 | 根路径信息 |
 
@@ -253,6 +256,96 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 
 ---
 
+### 4.8 同步单股日线行情
+
+`POST /svc/api/stocks/{code}/daily-quotes/sync`
+
+对单只股票按日期区间拉取 AKShare `stock_zh_a_daily()`(前复权 `qfq`),UPSERT 到 `stock_daily_quotes` 表。
+
+**Path 参数**:`code`(6 位股票代码,否则 `422`)
+
+**请求体**
+```json
+{ "start_date": "2026-01-01", "end_date": "2026-01-31" }
+```
+- `start_date <= end_date`,否则 `422`;`adjust` 固定 `qfq`,不暴露为参数。
+
+**成功响应** `200`
+```json
+{
+  "code": "600519",
+  "start_date": "2026-01-01",
+  "end_date": "2026-01-31",
+  "adjust": "qfq",
+  "total": 20,
+  "upserted": 20
+}
+```
+
+**失败响应**
+- `502`:`{ "detail": "行情数据获取失败" }`(AKShare 拉取异常)
+- `500`:`{ "detail": "数据库写入失败" }`
+- AKShare 返回空 -> `200` 且 `total=0, upserted=0`
+- 幂等:同 `(code, trade_date, adjust)` 重复写入覆盖旧值、不新增行
+
+---
+
+### 4.9 全市场批量同步日线行情
+
+`POST /svc/api/stocks/daily-quotes/sync`
+
+对 `stocks` 表中全部活跃股票按 `≤5 天` 日期区间批量拉取 qfq 日线入库(后台执行)。详见 `../prd/bulk-daily-quotes-sync-plan.md`。
+
+**请求体**
+```json
+{ "start_date": "2026-07-24", "end_date": "2026-07-24" }
+```
+- `start_date <= end_date` 且 `end_date - start_date <= 5 天`,否则 `422`(护栏,防误触发超长任务;**不作用于单股端点 4.8**)。
+
+**成功响应** `202`
+```json
+{
+  "job_id": "<hex>",
+  "status": "pending",
+  "status_url": "/svc/api/stocks/daily-quotes/sync/<job_id>"
+}
+```
+- 立即返回,实际拉取在后台进行(`BackgroundTasks`,并发 4 + 重试 2);单日全市场约 5–10 分钟。
+- 前置依赖:`stocks` 表已有活跃代码(先调 4.2 `/stocks/sync`)。
+
+---
+
+### 4.10 查询批量同步任务状态
+
+`GET /svc/api/stocks/daily-quotes/sync/{job_id}`
+
+**Path 参数**:`job_id`(由 4.9 返回)
+
+**成功响应** `200`
+```json
+{
+  "job_id": "...",
+  "status": "running|completed|failed",
+  "start_date": "2026-07-24",
+  "end_date": "2026-07-24",
+  "total_stocks": 5530,
+  "upserted": 5524,
+  "empty": 5,
+  "failed": 1,
+  "failed_codes": ["689009"],
+  "started_at": "2026-07-27T08:00:00+00:00",
+  "finished_at": "2026-07-27T08:09:43+00:00",
+  "elapsed_ms": 283000,
+  "error": null
+}
+```
+- 单股 AKShare/DB 异常计入 `failed` + `failed_codes`,任务仍以 `completed` 结束(不整体 `500`)。
+- `empty` = AKShare 返回空(暂停股);任务态存于进程内存,进程重启即丢。
+
+**失败响应**:`404` `{ "detail": "任务不存在" }`(未知 `job_id`)
+
+---
+
 ## 5. 鉴权失败响应
 
 | 场景 | 状态码 | 响应 |
@@ -312,6 +405,37 @@ export interface SyncResult {
   upserted: number;
   deactivated: number;
 }
+
+export interface DailyQuotesSyncResult {
+  code: string;
+  start_date: string;
+  end_date: string;
+  adjust: string;
+  total: number;
+  upserted: number;
+}
+
+export interface BulkSyncAccepted {
+  job_id: string;
+  status: "pending";
+  status_url: string;
+}
+
+export interface BulkSyncStatus {
+  job_id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  start_date: string;
+  end_date: string;
+  total_stocks: number;
+  upserted: number;
+  empty: number;
+  failed: number;
+  failed_codes: string[];
+  started_at: string | null;
+  finished_at: string | null;
+  elapsed_ms: number | null;
+  error: string | null;
+}
 ```
 
 ---
@@ -337,3 +461,7 @@ export interface SyncResult {
 - [数据库 Schema](../schema/schema.sql)
 - [前端规格](../prd/frontend-spec.md)
 - [股票同步需求](../prd/stock-sync-spec.md)
+- [基础行情入库计划](../prd/daily-quotes-sync-plan.md)
+- [全市场批量入库计划](../prd/bulk-daily-quotes-sync-plan.md)
+- [ADR 0001 同步股票列表入库](../design/adr/0001-sync-stocks-to-db.md)
+- [ADR 0002 全市场批量入库](../design/adr/0002-bulk-daily-quotes-sync.md)

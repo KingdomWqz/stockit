@@ -48,3 +48,29 @@ def test_sync_stock_list_batches_small_batch_size(fake_db):
     codes = {r["code"] for r in fake_db.tables["stocks"]}
     assert codes == {f"{i:06d}" for i in range(5)}
     assert all(r["is_active"] is True for r in fake_db.tables["stocks"])
+
+
+def test_get_active_stock_codes_paginates_and_filters_active(fake_db):
+    fake_db.tables["stocks"] = [
+        {"code": "600519", "name": "贵州茅台", "is_active": True, "industry": None},
+        {"code": "000001", "name": "平安银行", "is_active": True, "industry": None},
+        {"code": "688981", "name": "中芯国际", "is_active": False, "industry": None},
+        {"code": "600000", "name": "浦发银行", "is_active": True, "industry": None},
+    ]
+    # batch_size=2 -> 2 pages: [600519,000001], [600000] (len 1 < 2 -> stop).
+    # The inactive 688981 is filtered out before pagination.
+    codes = db_client.get_active_stock_codes(batch_size=2)
+    assert codes == ["600519", "000001", "600000"]
+
+
+def test_get_active_stock_codes_empty(fake_db):
+    fake_db.tables["stocks"] = []
+    assert db_client.get_active_stock_codes() == []
+
+
+def test_get_active_stock_codes_single_page(fake_db):
+    fake_db.tables["stocks"] = [
+        {"code": "600519", "name": "贵州茅台", "is_active": True, "industry": None},
+        {"code": "688981", "name": "中芯国际", "is_active": False, "industry": None},
+    ]
+    assert db_client.get_active_stock_codes() == ["600519"]

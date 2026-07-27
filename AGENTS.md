@@ -24,3 +24,4 @@
 - 所有 Python 包操作使用 `uv`(而非 pip),在 `server/` 下运行
 - Python 代码遵循标准 PEP 8 风格
 - 前端通过 `/svc/api/...` 调用后端(同源反向代理)
+- Plan 文档(实施计划)保存到 `docs/` 对应目录:需求类放 `docs/projects/stockit/prd/`,任务清单类放 `docs/projects/stockit/changelog/`,不留在 `~/.claude/plans/`
