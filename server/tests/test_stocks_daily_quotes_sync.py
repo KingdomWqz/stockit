@@ -28,17 +28,18 @@ def _stub_akshare(monkeypatch):
 
 
 def _quotes_df():
+    """模仿 AKShare stock_zh_a_daily 真实列名(turnover 而非 turnover_rate)。"""
     return pd.DataFrame(
         [
             {"date": "2026-01-02", "open": 100.0, "high": 105.0, "low": 99.0,
              "close": 103.5, "volume": 1000, "amount": 100000.0,
-             "pct_chg": 1.5, "turnover_rate": 0.8},
+             "pct_chg": 1.5, "turnover": 0.8},
             {"date": "2026-01-05", "open": 103.5, "high": 107.0, "low": 103.0,
              "close": 106.0, "volume": 1200, "amount": 120000.0,
-             "pct_chg": 2.4, "turnover_rate": 0.9},
+             "pct_chg": 2.4, "turnover": 0.9},
             {"date": "2026-01-06", "open": 106.0, "high": 108.0, "low": 105.0,
              "close": 107.5, "volume": 900, "amount": 95000.0,
-             "pct_chg": 1.4, "turnover_rate": 0.7},
+             "pct_chg": 1.4, "turnover": 0.7},
         ]
     )
 

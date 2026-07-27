@@ -13,6 +13,7 @@ import db_client
 
 
 def _sample_df():
+    """模仿 AKShare stock_zh_a_daily 的真实列名(turnover 而非 turnover_rate)。"""
     return pd.DataFrame(
         [
             {
@@ -24,7 +25,7 @@ def _sample_df():
                 "volume": 1000,
                 "amount": 100000.0,
                 "pct_chg": 1.5,
-                "turnover_rate": 0.8,
+                "turnover": 0.8,
             },
             {
                 "date": "2026-01-03",
@@ -35,7 +36,7 @@ def _sample_df():
                 "volume": 1200,
                 "amount": 120000.0,
                 "pct_chg": 2.4,
-                "turnover_rate": 0.9,
+                "turnover": 0.9,
             },
             {
                 "date": "2026-01-06",
@@ -46,7 +47,7 @@ def _sample_df():
                 "volume": 900,
                 "amount": 95000.0,
                 "pct_chg": 1.4,
-                "turnover_rate": 0.7,
+                "turnover": 0.7,
             },
         ]
     )
@@ -65,6 +66,8 @@ def test_upsert_daily_quotes_writes_new_rows(fake_db):
     assert by_date["2026-01-02"]["adjust"] == "qfq"
     assert by_date["2026-01-02"]["code"] == "600519"
     assert by_date["2026-01-06"]["volume"] == 900
+    # AKShare 列 turnover 映射到 DB 列 turnover_rate
+    assert by_date["2026-01-02"]["turnover_rate"] == 0.8
 
 
 def test_upsert_daily_quotes_overwrites_same_key(fake_db):
@@ -155,10 +158,10 @@ def test_upsert_daily_quotes_handles_nan(fake_db):
                 "high": 105.0,
                 "low": 99.0,
                 "close": 103.5,
-                "volume": 1000,
+                "volume": float("nan"),
                 "amount": float("nan"),
                 "pct_chg": 1.5,
-                "turnover_rate": float("nan"),
+                "turnover": float("nan"),
             },
         ]
     )
@@ -169,4 +172,32 @@ def test_upsert_daily_quotes_handles_nan(fake_db):
     assert row["open"] is None
     assert row["amount"] is None
     assert row["turnover_rate"] is None
+    assert row["volume"] is None
     assert row["close"] == 103.5
+
+
+def test_upsert_daily_quotes_coerces_volume_to_int(fake_db):
+    """AKShare volume 是 float(如 2733342.0),DB 列是 BIGINT。
+
+    PostgREST 把带小数的字符串送入 BIGINT 会报 22P02,helper 必须转成 int。
+    """
+    df = pd.DataFrame(
+        [
+            {
+                "date": "2026-01-02",
+                "open": 100.0,
+                "high": 105.0,
+                "low": 99.0,
+                "close": 103.5,
+                "volume": 2733342.0,
+                "amount": 100000.0,
+                "turnover": 0.8,
+            },
+        ]
+    )
+
+    db_client.upsert_daily_quotes(df, code="600519")
+
+    [row] = fake_db.tables["stock_daily_quotes"]
+    assert row["volume"] == 2733342
+    assert isinstance(row["volume"], int)

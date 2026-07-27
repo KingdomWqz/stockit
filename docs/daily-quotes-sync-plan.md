@@ -140,16 +140,19 @@ upsert_daily_quotes(code, df_quotes, adjust="qfq", batch_size=500)
 字段映射：
 
 ```text
-date          -> trade_date
-open          -> open
-high          -> high
-low           -> low
-close         -> close
-volume        -> volume
-amount        -> amount
-pct_chg       -> pct_chg
-turnover_rate -> turnover_rate
+date    -> trade_date
+open    -> open
+high    -> high
+low     -> low
+close   -> close
+volume  -> volume
+amount  -> amount
+turnover -> turnover_rate   # AKShare 列名是 turnover,值为换手率
+pct_chg -> pct_chg           # 该端点不返回,留 NULL
 ```
+
+> 注:`ak.stock_zh_a_daily` 实际返回的换手率列名是 `turnover`(非 `turnover_rate`),
+> 映射到 DB 的 `turnover_rate` 列;`pct_chg` 该端点不提供,留空(DB 列可空)。
 
 新增路由处理：
 

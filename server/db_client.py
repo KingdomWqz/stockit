@@ -126,7 +126,9 @@ def sync_stock_list(df: pd.DataFrame, batch_size: int = 500) -> dict:
     return {"total": total, "upserted": total, "deactivated": len(to_deactivate)}
 
 
-# 字段映射：AKShare 列名 -> 数据库列名
+# 字段映射：AKShare stock_zh_a_daily 列名 -> 数据库列名
+# 注:AKShare 该端点返回 `turnover`(换手率,如 0.002183),映射到 DB 的 turnover_rate;
+#    `pct_chg` 该端点不返回,留 NULL(DB 列可空)。
 _DAILY_QUOTES_COLUMN_MAP = {
     "date": "trade_date",
     "open": "open",
@@ -135,8 +137,8 @@ _DAILY_QUOTES_COLUMN_MAP = {
     "close": "close",
     "volume": "volume",
     "amount": "amount",
+    "turnover": "turnover_rate",
     "pct_chg": "pct_chg",
-    "turnover_rate": "turnover_rate",
 }
 
 
@@ -171,6 +173,13 @@ def upsert_daily_quotes(
     for rec in records:
         rec["code"] = code
         rec["adjust"] = adjust
+        # volume 是 BIGINT;AKShare 返回 float(如 2733342.0),PostgREST 把带小数的
+        # 字符串送入 BIGINT 会报 22P02,统一转 Python int(NaN -> None)。
+        vol = rec.get("volume")
+        if vol is None or pd.isna(vol):
+            rec["volume"] = None
+        else:
+            rec["volume"] = int(vol)
 
     total = len(records)
     client = get_client()
@@ -182,6 +191,5 @@ def upsert_daily_quotes(
             on_conflict="code,trade_date,adjust",
         ).execute()
         upserted += len(batch)
-
     logger.info("写入 stock_daily_quotes: total=%d, upserted=%d", total, upserted)
     return {"total": total, "upserted": upserted}
