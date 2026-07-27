@@ -1,13 +1,13 @@
 # Stockit 基础行情入库任务清单
 
-对应需求文档：`docs/daily-quotes-sync-plan.md`。每个任务 = 一个 MR，独立可验证。
+对应需求文档：`../prd/daily-quotes-sync-plan.md`。每个任务 = 一个 MR，独立可验证。
 
 ---
 
 ## Phase 1：数据库
 
 ### TS1.1 在 `schema.sql` 中新增 `stock_daily_quotes` 表
-- 修改 `docs/sql/schema.sql`
+- 修改 `../schema/schema.sql`
 - 追加 `CREATE TABLE IF NOT EXISTS public.stock_daily_quotes (...)`，字段、外键 (`REFERENCES public.stocks(code)`)、`UNIQUE (code, trade_date, adjust)` 与 `daily-quotes-sync-plan.md` 第 3 节保持一致
 - 追加 `CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_daily_quotes_code_date_adjust ON public.stock_daily_quotes (code, trade_date DESC, adjust)`
 - 追加 `CREATE INDEX IF NOT EXISTS idx_stock_daily_quotes_date_code ON public.stock_daily_quotes (trade_date DESC, code)`
@@ -111,7 +111,7 @@
 
 ## 完成标准
 
-- [ ] `docs/sql/schema.sql` 包含 `stock_daily_quotes` 表、唯一键、两条索引
+- [ ] `../schema/schema.sql` 包含 `stock_daily_quotes` 表、唯一键、两条索引
 - [ ] `server/db_client.upsert_daily_quotes(df, adjust="qfq")` 写入正确、幂等、不触碰 `stock_daily_data`
 - [ ] `POST /svc/api/stocks/{code}/daily-quotes/sync` 受 JWT 保护，校验 code 与日期区间，调用 AKShare 拉取 `qfq` 行情并返回同步统计
 - [ ] 错误语义符合 plan 第 2 节：401 / 422 / 502 / 500

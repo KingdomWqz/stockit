@@ -133,7 +133,7 @@ web/src/
 
 ## 6. 数据架构
 
-数据库为 Supabase PostgreSQL，详细 Schema 见 `docs/sql/schema.sql`。
+数据库为 Supabase PostgreSQL，详细 Schema 见 `../schema/schema.sql`。
 
 **表结构**
 
@@ -194,7 +194,7 @@ AKShare stock_zh_a_daily()        ──kline──▶ 实时返回前端 (不�
 
 ## 9. 已知差异(实现 vs 规格文档)
 
-`docs/frontend-spec.md` 与 `docs/stock-sync-spec.md` 为早期规格，实际实现有以下差异，文档与接口契约以**实际代码**为准：
+`../prd/frontend-spec.md` 与 `../prd/stock-sync-spec.md` 为早期规格，实际实现有以下差异，文档与接口契约以**实际代码**为准：
 
 | 项目 | 规格文档 | 实际实现 |
 |------|----------|----------|
@@ -206,9 +206,9 @@ AKShare stock_zh_a_daily()        ──kline──▶ 实时返回前端 (不�
 
 ## 10. 相关文档
 
-- [服务端接口契约](./api-contract.md)
-- [数据库设计](./database.md)
-- [数据库 Schema](./sql/schema.sql)
-- [前端规格](./frontend-spec.md)
-- [股票同步需求](./stock-sync-spec.md)
+- [服务端接口契约](../api/api-contract.md)
+- [数据库设计](./database-design/01-architecture-and-schema.md)
+- [数据库 Schema](../schema/schema.sql)
+- [前端规格](../prd/frontend-spec.md)
+- [股票同步需求](../prd/stock-sync-spec.md)
 - [ADR-0001 同步股票入库](./adr/0001-sync-stocks-to-db.md)

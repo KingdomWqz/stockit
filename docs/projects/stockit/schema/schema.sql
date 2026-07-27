@@ -1,6 +1,6 @@
 -- ============================================================
 -- Stockit - Supabase 数据库 Schema (幂等，可重复执行)
--- 来源: docs/database.md
+-- 来源: ../design/database-design/01-architecture-and-schema.md
 -- 项目: doidksdivyowjicjzplv
 -- ============================================================
 

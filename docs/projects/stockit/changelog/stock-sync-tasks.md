@@ -1,6 +1,6 @@
 # Stockit 股票同步入库任务清单
 
-对应需求文档：`docs/stock-sync-spec.md`。每个任务 = 一个 MR，独立可验证。
+对应需求文档：`../prd/stock-sync-spec.md`。每个任务 = 一个 MR，独立可验证。
 
 ---
 

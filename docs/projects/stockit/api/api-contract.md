@@ -318,7 +318,7 @@ export interface SyncResult {
 
 ## 7. 与规格文档的差异
 
-`docs/frontend-spec.md` 中的早期契约与实际实现存在差异，**以本文档(实际代码)为准**：
+`../prd/frontend-spec.md` 中的早期契约与实际实现存在差异，**以本文档(实际代码)为准**：
 
 | 项目 | 规格(`frontend-spec.md`) | 实际实现 |
 |------|--------------------------|----------|
@@ -332,8 +332,8 @@ export interface SyncResult {
 
 ## 8. 相关文档
 
-- [技术架构文档](./architecture.md)
-- [数据库设计](./database.md)
-- [数据库 Schema](./sql/schema.sql)
-- [前端规格](./frontend-spec.md)
-- [股票同步需求](./stock-sync-spec.md)
+- [技术架构文档](../design/architecture.md)
+- [数据库设计](../design/database-design/01-architecture-and-schema.md)
+- [数据库 Schema](../schema/schema.sql)
+- [前端规格](../prd/frontend-spec.md)
+- [股票同步需求](../prd/stock-sync-spec.md)

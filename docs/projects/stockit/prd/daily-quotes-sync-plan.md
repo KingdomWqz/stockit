@@ -220,7 +220,7 @@ API 测试：
 
 落地时需要同步处理：
 
-- 在 `docs/sql/schema.sql` 末尾补一段 `CREATE TABLE IF NOT EXISTS public.stock_daily_quotes ...`（与本文档第 3 节保持一致），让 schema 文件与本计划同步。
+- 在 `../schema/schema.sql` 末尾补一段 `CREATE TABLE IF NOT EXISTS public.stock_daily_quotes ...`（与本文档第 3 节保持一致），让 schema 文件与本计划同步。
 - 在 `server/` 新增 `upsert_daily_quotes` 时，只写 `stock_daily_quotes`，不要触碰 `stock_daily_data`，避免混淆两表各自的 `created_at / updated_at` 行为与写入路径。
 - `stock_daily_data` 上的 `clean_old_stock_data(90)` 存储过程无需调整，对新表没有影响。
 

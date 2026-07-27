@@ -1,6 +1,6 @@
 """End-to-end tests for ``POST /svc/api/stocks/{code}/daily-quotes/sync``.
 
-Behaviour spec (docs/daily-quotes-sync-plan.md §2 + §5):
+Behaviour spec (docs/projects/stockit/prd/daily-quotes-sync-plan.md §2 + §5):
 - 401 when no token
 - 422 on non-6-digit code or inverted date range
 - 200 with sync stats on success

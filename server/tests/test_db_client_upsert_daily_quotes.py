@@ -1,7 +1,7 @@
 """Tests for ``db_client.upsert_daily_quotes``.
 
 Validates the basic-quote ingest helper against the contract in
-``docs/daily-quotes-sync-plan.md`` §4 and §5 — column mapping, NaN
+``docs/projects/stockit/prd/daily-quotes-sync-plan.md`` §4 and §5 — column mapping, NaN
 handling, idempotent overwrite, batching, and isolation from
 ``stock_daily_data``.
 """
