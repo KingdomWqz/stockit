@@ -5,8 +5,8 @@ description: 审查 OpenViking Resource 目录结构与索引质量的只读 rev
 
 # OpenViking Resource Reviewer
 
-官方设计文档：<https://docs.volcengine.com/docs/84313/2375493?lang=zh>
-本地工具：`ov` CLI（v0.4.9）。
+官方设计文档：<https://docs.volcengine.com/docs/84313/2375493?lang=zh>（页面需登录/动态渲染，若拉取不到以 `ov --help` 与子命令 `--help` 为准）。
+本地工具：`ov` CLI（以 `ov --version` 实测为准，本 Skill 撰写时为 v0.4.11）。
 
 ## 1. 角色 / Role
 
@@ -27,7 +27,8 @@ description: 审查 OpenViking Resource 目录结构与索引质量的只读 rev
   - L0 `.abstract.md`（~100 token）：一句话到一小段回答「这是什么」，用于向量检索与快速过滤。
   - L1 `.overview.md`（~1k–2k token）：回答「里面大概有什么、重点是什么、建议先看哪里」，用于 rerank 与导航。
   - L2 原始文件与子目录：完整详情。
-  - ⚠️ **L0/L1 由系统自动生成维护，不在审查范围**：这些特殊文件在「新增数据」或「session 归档」时由系统**自底向上聚合**自动生成（叶子节点先有，再聚合到父级）；多模态内容（图片/视频）也会生成文本描述用于统一检索。本 Skill 不审查 L0/L1 的生成与一致性。
+
+> L0/L1 由系统在「新增数据」或「session 归档」时**自底向上聚合**自动生成（叶子节点先有，再聚合到父级）；多模态内容也会生成文本描述用于统一检索。其生成与一致性属系统职责，本 Skill 不审查（详见 §1）。
 
 ## 3. 审查维度 / Review Checklist
 
@@ -41,8 +42,6 @@ description: 审查 OpenViking Resource 目录结构与索引质量的只读 rev
 | **索引健康** | 语义/向量是否可被检索（`find` 能否命中预期关键词）？资源是否设置了显式 `set-tags`（影响显式检索命中权重）？ |
 | **关系**（可选） | `relations` / `.relations.json` 是否合理、有无失效链接？ |
 
-> ❌ **不在审查范围**：L0 `.abstract.md` / L1 `.overview.md` 的生成、内容、一致性、漂移——这些由 ov 系统自动维护，本 Skill 不审查。`ov abstract` / `ov overview` 仅作为读取手段用于判断**目录语义**与**重复资源**，不用于评估 L0/L1 本身的健康度。
-
 ## 4. 审查工作流（只读命令链）
 
 全部使用只读命令。先侦察再下结论。
@@ -55,9 +54,9 @@ ov tree viking://resources/<root> -L 4
 ov ls <uri>
 ov stat <uri>
 
-# 3. 读目录摘要，判断目录语义与是否为重复资源（不评估 L0/L1 健康度）
+# 3. 读目录摘要，判断目录语义与是否为重复资源
 ov abstract <uri>      # 取目录/文件的摘要文字，用于语义对比
-ov overview <uri>      # 同上，用于辅助理解
+ov overview <uri>      # 取概览，辅助理解目录构成
 
 # 4. 定位内容重复（文件级 diff 判断是否冗余副本）
 ov find "<主题>" -u <uri>
@@ -79,8 +78,6 @@ ov task list
 
 > **异步状态提示**：若 `ov task list` 显示有未完成的异步处理，索引可能尚未刷新，此时审查结论必须标注「索引可能未刷新，建议 `ov wait` 后再审」。
 
-> **不审 L0/L1**：上面的 `ov abstract` / `ov overview` 仅是**读取手段**，用于对比目录语义和发现重复资源；**不要**评估 `.abstract.md` / `.overview.md` 是否生成、是否漂移、是否一致——这是系统职责。
-
 ## 5. 审查报告格式 / Report Format
 
 固定输出结构，便于人读与下游流程消费：
@@ -96,7 +93,6 @@ ov task list
 ## 问题清单
 每条：
 - 维度：<目录语义/重复资源/层级归属/索引健康/关系>
-  （注意：L0/L1 不在维度列表内，系统自动维护，不予审查）
 - URI：viking://...
 - 现状：...
 - 风险：...
@@ -115,35 +111,43 @@ ov task list
 
 ## 6. 不可变边界与安全约定
 
-- **本 Skill 严格只读**：只跑 `tree` / `ls` / `stat` / `abstract` / `overview` / `find` / `grep` / `glob` / `relations` / `health` / `status` / `task list`。
+- **本 Skill 严格只读**：只跑 `tree` / `ls` / `stat` / `abstract` / `overview` / `find` / `grep` / `glob` / `relations` / `health` / `status` / `task list` / `task status`。
 - **变更命令只进报告，不进执行**：`mkdir` / `mv` / `rm` / `reindex` / `write` / `link` / `unlink` 一律只作为「建议命令」写入报告。
 - **本地源文档路径不动**：连建议也只针对 OpenViking 端资源路径，不改本地文件。
 - **不可逆操作加护栏**：报告里凡涉及 `rm --recursive` 的建议，必须附「先 `ov tree <uri>` 核对范围」的前置步骤提示。
 
 ## 7. 命令速查表
 
+所有只读命令均可加 `-o json` 输出机器可读结果，便于批量比对与下游消费。
+
 | 只读（本 Skill 可直接跑） | 变更（只在报告里建议，本 Skill 不执行） |
 |---|---|
 | `ov tree <uri> -L <n>` | `ov mkdir <uri> --description "<desc>"` |
 | `ov ls <uri>` | `ov mv <from-uri> <to-uri>` |
-| `ov stat <uri>` | `ov rm <uri> -r --recursive --wait` |
-| `ov abstract <uri>`（取摘要，判断语义/重复，不审 L0 健康度） | `ov reindex <uri> --mode semantic_and_vectors --wait true` |
-| `ov overview <uri>`（取概览，辅助判断，不审 L1 健康度） | `ov wait --timeout <s>` |
-| `ov find "<query>" -u <uri>` | `ov link <from-uri> [to-uri]... --reason "<text>"` |
+| `ov stat <uri>` | `ov rm <uri> --recursive --wait` |
+| `ov abstract <uri>` | `ov reindex <uri> --mode semantic_and_vectors --wait true` |
+| `ov overview <uri>` | `ov wait --timeout <s>` |
+| `ov find "<query>" -u <uri> [-L 0,1,2] [-n <n>] [-t <score>]` | `ov link <from-uri> [to-uri]... --reason "<text>"` |
 | `ov grep "<pattern>" <uri>` | `ov unlink <from-uri> <to-uri>` |
 | `ov glob "<pattern>" -u <uri>` | |
 | `ov relations <uri>` | |
 | `ov health` / `ov status` | |
-| `ov task list` | |
+| `ov task list` / `ov task status <id>` | |
+
+> `find` 常用 flag：`-L 0,1,2` 限定结果层级、`-n/--node-limit` 限制返回数、`-t/--threshold` 分数阈值、`--context-type memory|resource|skill` 按类型过滤。审查「索引健康」时可用 `-L 0,1` 仅看摘要命中，节省 token。
 
 ## 8. 示例：审查 stockit/docs
 
-实测当前状态（审查基线）：
+以知识库 `viking://resources/stockit/docs` 为对象演示一次完整审查。
+
+**侦察**（`ov tree viking://resources/stockit/docs -L 4`）实测结构：
 
 ```
 viking://resources/stockit/docs/
-├── adr/0001-sync-stocks-to-db/
-├── database/股票指标数据库设计与维护技术文档_Supabase_个人本地版/   ← 带中文长后缀
+├── adr/0001-sync-stocks-to-db/0001-sync-stocks-to-db.md
+├── database/database-design/
+│   ├── 01-architecture-and-schema.md
+│   └── 03-cleanup-and-sdk.md
 ├── frontend-spec/frontend-spec.md
 ├── frontend-tasks/frontend-tasks.md
 ├── sql/schema.sql
@@ -151,22 +155,32 @@ viking://resources/stockit/docs/
 └── stock-sync-tasks/stock-sync-tasks.md
 ```
 
-审查流程：
+**审查流程：**
 
-1. `ov tree viking://resources/stockit/docs -L 4` 侦察。
-2. `ov abstract viking://resources/stockit/docs/database/股票指标...个人本地版` 取摘要文字，判断目录语义与是否为重复资源（不评估 L0 健康度）。
-3. `ov find "数据库设计" -u viking://resources/stockit/docs` 看是否同时命中重复的两份。
+1. `ov tree viking://resources/stockit/docs -L 4` 侦察整体结构。
+2. `ov abstract viking://resources/stockit/docs/database/database-design` 取摘要，判断目录语义是否清晰。
+3. `ov find "数据库 schema 设计" -u viking://resources/stockit/docs -L 0,1` 校验索引能否命中 `database-design/` 而非误命中旧路径。
+4. `ov grep "docs/sql/schema.sql" viking://resources/stockit/docs` 检查文档内是否残留已迁移的旧路径引用。
+5. `ov task list` 确认异步处理是否完成，决定结论是否需标注「索引可能未刷新」。
 
-报告片段（只建议，不执行）：
+**报告片段**（只建议，不执行）：
 
 ```
-- 维度：目录语义规范性
-- URI：viking://resources/stockit/docs/database/股票指标数据库设计与维护技术文档_Supabase_个人本地版
-- 现状：目录名含中文长后缀「_Supabase_个人本地版」，疑似导入时自动生成
-- 风险：目录名不承载简洁业务语义，检索命中后难以快速定位所属
-- 建议（需维护流程执行）：ov mv <该 URI> viking://resources/stockit/docs/database/schema-design
+- 维度：目录层级与归属
+- URI：viking://resources/stockit/docs
+- 现状：docs/ 下混合 adr/database/frontend-spec/frontend-tasks/sql/stock-sync-spec/stock-sync-tasks
+  七个并列主题目录，未按「需求/设计/接口/任务」等语义分组
+- 风险：主题并列难以体现文档间关系（如 spec 与 tasks 的配对），随文档增长更难导航
+- 建议（需维护流程执行）：按 prd/design/api/schema/tasks 等主题二级分组，
+  例如 ov mv .../stock-sync-spec .../prd/stock-sync-spec
 
-- 维度：索引 / 异步状态
-- ov task list 结论：<填入实测>
-- 若有未完成任务：建议 ov wait 后再审
+- 维度：索引健康
+- 现状：ov find "数据库 schema 设计" 命中 database-design/，未命中旧路径
+- 结论：索引已刷新，无需 ov wait
+
+## 已通过校验项（无问题）
+- viking://resources/stockit/docs/database/database-design：目录语义清晰、无重复
+- viking://resources/stockit/docs/adr/0001-sync-stocks-to-db：命名规范、归属正确
 ```
+
+> 上述「建议」仅为示例形态，实际结论以审查时实测为准；本 Skill 绝不执行 `ov mv`，只写入报告。
