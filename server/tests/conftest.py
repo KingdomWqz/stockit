@@ -2,8 +2,9 @@
 
 The Supabase client is mocked at the ``db_client.get_client`` seam with an
 in-memory fake that re-implements the small subset of the query-builder DSL
-Stockit uses (select / eq / in_ / or_ / limit / upsert / update). This lets
-behaviour-level tests run without a real database or network.
+Stockit uses (select / eq / in_ / like / or_ / limit / upsert / update /
+delete). This lets behaviour-level tests run without a real database or
+network.
 """
 
 import time
@@ -63,6 +64,10 @@ class _QueryBuilder:
         self._and_filters.append(("in", column, list(values)))
         return self
 
+    def like(self, column, pattern):
+        self._and_filters.append(("like", column, pattern))
+        return self
+
     def or_(self, query):
         for clause in query.split(","):
             col, op, pattern = clause.split(".", 2)
@@ -85,11 +90,17 @@ class _QueryBuilder:
         self._payload = payload
         return self
 
+    def delete(self):
+        self._mode = "delete"
+        return self
+
     def _matches(self, row):
         for op, column, value in self._and_filters:
             if op == "eq" and row.get(column) != value:
                 return False
             if op == "in" and row.get(column) not in value:
+                return False
+            if op == "like" and not _match_pattern(row.get(column, ""), value, False):
                 return False
         if not self._or_filters:
             return True
@@ -124,6 +135,11 @@ class _QueryBuilder:
         if self._mode == "update":
             for r in matched:
                 r.update(self._payload)
+            return _Response([dict(r) for r in matched])
+        if self._mode == "delete":
+            # 从行集合中移除匹配行（原地倒序删，避免索引错位）
+            matched_set = {id(r) for r in matched}
+            self._rows[:] = [r for r in self._rows if id(r) not in matched_set]
             return _Response([dict(r) for r in matched])
         return _Response(None)
 

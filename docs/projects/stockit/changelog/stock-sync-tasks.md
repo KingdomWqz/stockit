@@ -27,12 +27,14 @@
 ### TS2.1 实现同步写入函数
 - 修改 `server/db_client.py`
 - 新增 `sync_stock_list(df, batch_size=500)` 函数，逻辑：
-  1. 查询 DB 中现有 `is_active = true` 的 code 集合
-  2. 将 df 转为 records（`code`、`name`、`is_active = True`），分批 UPSERT（`on_conflict='code'`）
-  3. 计算 `现有 active 集合 - 新列表 code 集合`，分批将这些 code 的 `is_active` 置 `False`
-  4. 返回 `{"total": int, "upserted": int, "deactivated": int}`
+  1. 过滤北交所 code（`4`/`8`/`9` 开头），仅保留沪深 A 股
+  2. 查询 DB 中现有 `is_active = true` 的 code 集合
+  3. 将 df 转为 records（`code`、`name`、`is_active = True`），分批 UPSERT（`on_conflict='code'`）
+  4. 计算 `现有 active 集合 - 新列表 code 集合`，分批将这些 code 的 `is_active` 置 `False`
+  5. 物理删除北交所残留：先删子表 `stock_daily_quotes` 中 `4/8/9` 开头 code 的行情，再删父表 `stocks` 中同前缀的股票（解除外键引用）
+  6. 返回 `{"total": int, "upserted": int, "deactivated": int, "deleted": int}`
 - UPSERT 显式带 `is_active = True`，确保重新上市的股票自动激活
-**验证：** 传入 mock DataFrame（含一条 DB 已有 active 的 code），函数返回正确统计；DB 中该 code 的 name 已更新、is_active 仍为 true
+**验证：** 传入含北交所 code 的 mock DataFrame，函数返回统计含 `deleted`；DB 中北交所 code 不入库、既存北交所记录被物理删除
 
 ### TS2.2 实现同步端点
 - 修改 `server/stocks.py`
@@ -40,7 +42,7 @@
 - 新增 `@router.post("/stocks/sync")` 端点
 - 调用 `ak.stock_info_a_code_name()` 获取 DataFrame，失败返回 502
 - 调用 `db_client.sync_stock_list(df)`，返回结果
-**验证：** 携带 token 调用 `POST /svc/api/stocks/sync`，返回 `{"total": ~5530, "upserted": N, "deactivated": M}`；DB `stocks` 表有数据
+**验证：** 携带 token 调用 `POST /svc/api/stocks/sync`，返回 `{"total": ~5200, "upserted": N, "deactivated": M, "deleted": K}`；DB `stocks` 表有数据且无北交所 code
 
 ---
 
@@ -74,7 +76,7 @@
 ## 完成标准
 
 - [ ] 所有 `/svc/api/stocks/*` 端点无 token 时返回 401
-- [ ] `POST /svc/api/stocks/sync` 成功将 ~5,530 只股票写入 `stocks` 表
+- [ ] `POST /svc/api/stocks/sync` 成功将 ~5,200 只沪深股票写入 `stocks` 表，无北交所 code 残留
 - [ ] 重复 sync 后，退市股被标记 `is_active = false`，重新上市的股票被激活
 - [ ] 搜索查询 `stocks` 表，过滤退市股，返回正确结果
 - [ ] `stocks.py` 中不再有 `_CODE_NAME_CACHE` 和实时 AKShare 搜索调用

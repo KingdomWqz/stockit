@@ -94,19 +94,27 @@ def clean_expired_data(retention_days: int = 90) -> int | None:
 
 
 def sync_stock_list(df: pd.DataFrame, batch_size: int = 500) -> dict:
-    """将沪深京 A 股全集 UPSERT 到 ``stocks`` 表，并退市不在列表中的股票。
+    """将沪深 A 股全集 UPSERT 到 ``stocks`` 表，退市不在列表中的股票，并清理北交所残留。
+
+    北交所(代码以 4/8/9 开头)不在数据范围内：先从入参 df 过滤掉，再物理删除
+    ``stock_daily_quotes`` 与 ``stocks`` 表中既存的北交所记录。因 ``stock_daily_quotes.code``
+    外键引用 ``stocks.code``，须先删子表行情、再删父表股票。
 
     :param df: AKShare ``stock_info_a_code_name()`` 返回的 DataFrame，需含 code、name
-    :param batch_size: 单批 UPSERT/UPDATE 的记录数
-    :return: ``{"total", "upserted", "deactivated"}`` 同步统计
+    :param batch_size: 单批 UPSERT/UPDATE/DELETE 的记录数
+    :return: ``{"total", "upserted", "deactivated", "deleted"}`` 同步统计
     """
     client = get_client()
 
-    # 1. 查询当前在市 (is_active=true) 的 code 集合
+    # 1. 仅保留沪深 A 股（沪 6 开头、深 0/3 开头），排除北交所（4/8/9 开头）
+    code_str = df["code"].astype(str)
+    df = df[code_str.str.startswith(("6", "0", "3"))].copy()
+
+    # 2. 查询当前在市 (is_active=true) 的 code 集合
     resp = client.table("stocks").select("code").eq("is_active", True).execute()
     existing_active = {row["code"] for row in resp.data}
 
-    # 2. 构造记录并分批 UPSERT，显式带 is_active=True 以支持重新上市自动激活
+    # 3. 构造记录并分批 UPSERT，显式带 is_active=True 以支持重新上市自动激活
     records = [
         {"code": str(row["code"]), "name": str(row["name"]), "is_active": True}
         for row in df.to_dict(orient="records")
@@ -116,14 +124,41 @@ def sync_stock_list(df: pd.DataFrame, batch_size: int = 500) -> dict:
         batch = records[i:i + batch_size]
         client.table("stocks").upsert(batch, on_conflict="code").execute()
 
-    # 3. 退市：现有 active 集合 - 新列表 code 集合，分批置 is_active=False
+    # 4. 退市：现有 active 集合 - 新列表 code 集合，分批置 is_active=False
     new_codes = {row["code"] for row in records}
     to_deactivate = list(existing_active - new_codes)
     for i in range(0, len(to_deactivate), batch_size):
         batch = to_deactivate[i:i + batch_size]
         client.table("stocks").update({"is_active": False}).in_("code", batch).execute()
 
-    return {"total": total, "upserted": total, "deactivated": len(to_deactivate)}
+    # 5. 物理删除北交所残留：先删子表 stock_daily_quotes，再删父表 stocks。
+    #    PostgREST 不支持 code 的正则过滤，改用前缀通配 like 逐前缀删除。
+    deleted = _delete_bse_stocks(client, batch_size)
+
+    return {
+        "total": total,
+        "upserted": total,
+        "deactivated": len(to_deactivate),
+        "deleted": deleted,
+    }
+
+
+def _delete_bse_stocks(client: Client, batch_size: int = 500) -> int:
+    """物理删除北交所(4/8/9 开头)记录，先删子表行情、再删父表股票。
+
+    :param client: Supabase 客户端
+    :param batch_size: 单批删除记录数（未使用，保留以与其它批操作接口一致）
+    :return: 删除的 ``stocks`` 记录数（``stock_daily_quotes`` 行情数不计入）
+    """
+    bse_prefixes = ("4", "8", "9")
+    deleted = 0
+    for prefix in bse_prefixes:
+        # 子表：先删 stock_daily_quotes 中此前缀 code 的行情，解除外键引用
+        client.table("stock_daily_quotes").delete().like("code", f"{prefix}%").execute()
+        # 父表：再删 stocks 中此前缀 code 的股票，统计删除行数
+        resp = client.table("stocks").delete().like("code", f"{prefix}%").execute()
+        deleted += len(resp.data or [])
+    return deleted
 
 
 # 字段映射：AKShare stock_zh_a_daily 列名 -> 数据库列名
