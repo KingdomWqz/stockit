@@ -1,3 +1,5 @@
+import sqlite3
+
 import pandas as pd
 import pytest
 import akshare as ak
@@ -15,10 +17,27 @@ def _stub_akshare(monkeypatch):
     )
 
 
+def _seed_stocks(con: sqlite3.Connection, rows):
+    """rows: iterable of (code, name, is_active)."""
+    con.executemany(
+        "INSERT INTO stocks (code, name, is_active) VALUES (?, ?, ?)",
+        [(c, n, 1 if a else 0) for c, n, a in rows],
+    )
+    con.commit()
+
+
+def _quotes_rows(con: sqlite3.Connection) -> list[dict]:
+    return [
+        dict(r) for r in con.execute(
+            "SELECT code, trade_date, adjust FROM stock_daily_quotes ORDER BY trade_date"
+        ).fetchall()
+    ]
+
+
 # --------------------------------------------------------------------------- #
 # /stocks/sync
 # --------------------------------------------------------------------------- #
-def test_sync_returns_stats(client, monkeypatch, auth_headers):
+def test_sync_returns_stats(client, monkeypatch):
     df = pd.DataFrame(
         [{"code": "600000", "name": "浦发银行"}, {"code": "600519", "name": "贵州茅台"}]
     )
@@ -31,27 +50,22 @@ def test_sync_returns_stats(client, monkeypatch, auth_headers):
 
     monkeypatch.setattr(db_client, "sync_stock_list", fake_sync)
 
-    resp = client.post("/svc/api/stocks/sync", headers=auth_headers)
+    resp = client.post("/svc/api/stocks/sync")
 
     assert resp.status_code == 200
     assert resp.json() == {"total": 2, "upserted": 2, "deactivated": 0, "deleted": 0}
     assert list(captured["df"]["code"]) == ["600000", "600519"]
 
 
-def test_sync_returns_502_when_akshare_fails(client, monkeypatch, auth_headers):
+def test_sync_returns_502_when_akshare_fails(client, monkeypatch):
     def boom():
         raise RuntimeError("down")
 
     monkeypatch.setattr(ak, "stock_info_a_code_name", boom)
 
-    resp = client.post("/svc/api/stocks/sync", headers=auth_headers)
+    resp = client.post("/svc/api/stocks/sync")
 
     assert resp.status_code == 502
-
-
-def test_sync_requires_token(client):
-    resp = client.post("/svc/api/stocks/sync")
-    assert resp.status_code == 401
 
 
 # --------------------------------------------------------------------------- #
@@ -66,18 +80,25 @@ def test_sync_stock_list_excludes_and_deletes_bse(fake_db):
     - stock_daily_quotes 有引用北交所 code 的行情 → 先删子表、再删父表
     - 返回统计含 deleted 字段
     """
+    con = fake_db
     # 既有数据：沪深各一条在市 + 北交所残留（股票表 + 行情表）
-    fake_db.tables["stocks"] = [
-        {"code": "600519", "name": "贵州茅台", "is_active": True, "industry": None},
-        {"code": "830799", "name": "某北交所旧", "is_active": True, "industry": None},
-        {"code": "920000", "name": "某北交所旧2", "is_active": True, "industry": None},
-    ]
-    fake_db.tables["stock_daily_quotes"] = [
-        {"code": "830799", "trade_date": "2026-07-24", "adjust": "qfq",
-         "open": 1.0, "high": 1.0, "low": 1.0, "close": 1.0, "volume": 1},
-        {"code": "920000", "trade_date": "2026-07-24", "adjust": "qfq",
-         "open": 2.0, "high": 2.0, "low": 2.0, "close": 2.0, "volume": 2},
-    ]
+    con.executemany(
+        "INSERT INTO stocks (code, name, is_active) VALUES (?, ?, ?)",
+        [
+            ("600519", "贵州茅台", 1),
+            ("830799", "某北交所旧", 1),
+            ("920000", "某北交所旧2", 1),
+        ],
+    )
+    con.executemany(
+        "INSERT INTO stock_daily_quotes (code, trade_date, adjust, open, high, low, close, volume) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            ("830799", "2026-07-24", "qfq", 1.0, 1.0, 1.0, 1.0, 1),
+            ("920000", "2026-07-24", "qfq", 2.0, 2.0, 2.0, 2.0, 2),
+        ],
+    )
+    con.commit()
 
     df = pd.DataFrame([
         {"code": "600519", "name": "贵州茅台"},   # 沪，已在库 → 更新
@@ -87,11 +108,15 @@ def test_sync_stock_list_excludes_and_deletes_bse(fake_db):
     stats = db_client.sync_stock_list(df)
 
     # 入库 code 仅沪深两条
-    written_codes = {r["code"] for r in fake_db.tables["stocks"]}
+    written_codes = {
+        r["code"] for r in con.execute("SELECT code FROM stocks").fetchall()
+    }
     assert written_codes == {"600519", "000001"}
 
     # 北交所行情已从子表删除
-    quote_codes = {r["code"] for r in fake_db.tables["stock_daily_quotes"]}
+    quote_codes = {
+        r["code"] for r in con.execute("SELECT code FROM stock_daily_quotes").fetchall()
+    }
     assert "830799" not in quote_codes and "920000" not in quote_codes
 
     # 统计：total=2（沪深），deleted=2（两条北交所股票）
@@ -103,13 +128,12 @@ def test_sync_stock_list_excludes_and_deletes_bse(fake_db):
 # --------------------------------------------------------------------------- #
 # /stocks/search (DB-backed)
 # --------------------------------------------------------------------------- #
-def test_search_returns_active_name_matches_from_db(client, fake_db, auth_headers):
-    fake_db.tables["stocks"] = [
-        {"code": "600519", "name": "贵州茅台", "is_active": True, "industry": None},
-        {"code": "000001", "name": "平安银行", "is_active": True, "industry": None},
-        {"code": "000002", "name": "平安退", "is_active": False, "industry": None},
-    ]
-    resp = client.get("/svc/api/stocks/search?keyword=平安", headers=auth_headers)
+def test_search_returns_active_name_matches_from_db(client, fake_db):
+    _seed_stocks(
+        fake_db,
+        [("600519", "贵州茅台", True), ("000001", "平安银行", True), ("000002", "平安退", False)],
+    )
+    resp = client.get("/svc/api/stocks/search?keyword=平安")
 
     assert resp.status_code == 200
     data = resp.json()
@@ -117,13 +141,12 @@ def test_search_returns_active_name_matches_from_db(client, fake_db, auth_header
     assert all(d["code"] != "000002" for d in data)
 
 
-def test_search_matches_by_code_prefix(client, fake_db, auth_headers):
-    fake_db.tables["stocks"] = [
-        {"code": "600519", "name": "贵州茅台", "is_active": True, "industry": None},
-        {"code": "600000", "name": "浦发银行", "is_active": True, "industry": None},
-        {"code": "000001", "name": "平安银行", "is_active": True, "industry": None},
-    ]
-    resp = client.get("/svc/api/stocks/search?keyword=600", headers=auth_headers)
+def test_search_matches_by_code_prefix(client, fake_db):
+    _seed_stocks(
+        fake_db,
+        [("600519", "贵州茅台", True), ("600000", "浦发银行", True), ("000001", "平安银行", True)],
+    )
+    resp = client.get("/svc/api/stocks/search?keyword=600")
 
     assert resp.status_code == 200
     data = resp.json()
@@ -131,12 +154,9 @@ def test_search_matches_by_code_prefix(client, fake_db, auth_headers):
     assert all(d["market"] == "上海" for d in data)
 
 
-def test_search_limits_to_20(client, fake_db, auth_headers):
-    fake_db.tables["stocks"] = [
-        {"code": f"{i:06d}", "name": f"股票{i}", "is_active": True, "industry": None}
-        for i in range(25)
-    ]
-    resp = client.get("/svc/api/stocks/search?keyword=股票", headers=auth_headers)
+def test_search_limits_to_20(client, fake_db):
+    _seed_stocks(fake_db, [(f"{i:06d}", f"股票{i}", True) for i in range(25)])
+    resp = client.get("/svc/api/stocks/search?keyword=股票")
 
     assert resp.status_code == 200
     assert len(resp.json()) == 20

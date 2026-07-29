@@ -1,7 +1,6 @@
 """End-to-end tests for ``POST /svc/api/stocks/{code}/daily-quotes/sync``.
 
 Behaviour spec (docs/projects/stockit/prd/daily-quotes-sync-plan.md §2 + §5):
-- 401 when no token
 - 422 on non-6-digit code or inverted date range
 - 200 with sync stats on success
 - 200 with ``total=upserted=0`` when AKShare returns empty
@@ -9,6 +8,8 @@ Behaviour spec (docs/projects/stockit/prd/daily-quotes-sync-plan.md §2 + §5):
 - idempotent: same ``(code, trade_date, adjust)`` second call overwrites,
   no duplicate row.
 """
+
+import sqlite3
 
 import pandas as pd
 import pytest
@@ -25,6 +26,25 @@ def _stub_akshare(monkeypatch):
         "stock_info_a_code_name",
         lambda: pd.DataFrame([{"code": "300750", "name": "宁德时代"}]),
     )
+
+
+@pytest.fixture(autouse=True)
+def _seed_parent_stock(fake_db):
+    """stock_daily_quotes.code 外键引用 stocks.code，先种入父行 600519/000001。"""
+    fake_db.executemany(
+        "INSERT INTO stocks (code, name, is_active) VALUES (?, ?, 1)",
+        [("600519", "贵州茅台"), ("000001", "平安银行")],
+    )
+    fake_db.commit()
+
+
+def _quotes_rows(con: sqlite3.Connection) -> list[dict]:
+    return [
+        dict(r) for r in con.execute(
+            "SELECT code, trade_date, adjust, close FROM stock_daily_quotes "
+            "ORDER BY trade_date"
+        ).fetchall()
+    ]
 
 
 def _quotes_df():
@@ -45,42 +65,31 @@ def _quotes_df():
 
 
 # --------------------------------------------------------------------------- #
-def test_sync_daily_quotes_requires_token(client):
-    resp = client.post(
-        "/svc/api/stocks/600519/daily-quotes/sync",
-        json={"start_date": "2026-01-01", "end_date": "2026-01-31"},
-    )
-    assert resp.status_code == 401
-
-
-def test_sync_daily_quotes_rejects_non_six_digit_code(client, auth_headers):
+def test_sync_daily_quotes_rejects_non_six_digit_code(client):
     for bad in ["12345", "abcdef", "60051a"]:
         resp = client.post(
             f"/svc/api/stocks/{bad}/daily-quotes/sync",
             json={"start_date": "2026-01-01", "end_date": "2026-01-31"},
-            headers=auth_headers,
         )
         assert resp.status_code == 422, bad
 
 
-def test_sync_daily_quotes_rejects_inverted_dates(client, auth_headers):
+def test_sync_daily_quotes_rejects_inverted_dates(client):
     resp = client.post(
         "/svc/api/stocks/600519/daily-quotes/sync",
         json={"start_date": "2026-02-01", "end_date": "2026-01-01"},
-        headers=auth_headers,
     )
     assert resp.status_code == 422
 
 
 def test_sync_daily_quotes_returns_stats_on_success(
-    client, fake_db, auth_headers, monkeypatch
+    client, fake_db, monkeypatch
 ):
     monkeypatch.setattr(ak, "stock_zh_a_daily", lambda **kw: _quotes_df())
 
     resp = client.post(
         "/svc/api/stocks/600519/daily-quotes/sync",
         json={"start_date": "2026-01-01", "end_date": "2026-01-31"},
-        headers=auth_headers,
     )
 
     assert resp.status_code == 200, resp.text
@@ -93,20 +102,19 @@ def test_sync_daily_quotes_returns_stats_on_success(
         "total": 3,
         "upserted": 3,
     }
-    rows = fake_db.tables["stock_daily_quotes"]
+    rows = _quotes_rows(fake_db)
     assert len(rows) == 3
     assert all(r["code"] == "600519" and r["adjust"] == "qfq" for r in rows)
 
 
 def test_sync_daily_quotes_idempotent_overwrite(
-    client, fake_db, auth_headers, monkeypatch
+    client, fake_db, monkeypatch
 ):
     monkeypatch.setattr(ak, "stock_zh_a_daily", lambda **kw: _quotes_df())
 
     first = client.post(
         "/svc/api/stocks/600519/daily-quotes/sync",
         json={"start_date": "2026-01-01", "end_date": "2026-01-31"},
-        headers=auth_headers,
     )
     assert first.status_code == 200
     assert first.json()["upserted"] == 3
@@ -119,7 +127,6 @@ def test_sync_daily_quotes_idempotent_overwrite(
     second = client.post(
         "/svc/api/stocks/600519/daily-quotes/sync",
         json={"start_date": "2026-01-01", "end_date": "2026-01-31"},
-        headers=auth_headers,
     )
     assert second.status_code == 200
     assert second.json() == {
@@ -131,14 +138,14 @@ def test_sync_daily_quotes_idempotent_overwrite(
         "upserted": 3,
     }
 
-    rows = fake_db.tables["stock_daily_quotes"]
+    rows = _quotes_rows(fake_db)
     assert len(rows) == 3
     by_date = {r["trade_date"]: r for r in rows}
     assert by_date["2026-01-05"]["close"] == 222.22
 
 
 def test_sync_daily_quotes_returns_502_when_akshare_fails(
-    client, auth_headers, monkeypatch
+    client, monkeypatch
 ):
     def boom(**kw):
         raise RuntimeError("down")
@@ -148,13 +155,12 @@ def test_sync_daily_quotes_returns_502_when_akshare_fails(
     resp = client.post(
         "/svc/api/stocks/600519/daily-quotes/sync",
         json={"start_date": "2026-01-01", "end_date": "2026-01-31"},
-        headers=auth_headers,
     )
     assert resp.status_code == 502
 
 
 def test_sync_daily_quotes_returns_zero_when_akshare_empty(
-    client, fake_db, auth_headers, monkeypatch
+    client, fake_db, monkeypatch
 ):
     monkeypatch.setattr(
         ak, "stock_zh_a_daily",
@@ -166,7 +172,6 @@ def test_sync_daily_quotes_returns_zero_when_akshare_empty(
     resp = client.post(
         "/svc/api/stocks/600519/daily-quotes/sync",
         json={"start_date": "2026-01-01", "end_date": "2026-01-31"},
-        headers=auth_headers,
     )
     assert resp.status_code == 200
     assert resp.json() == {
@@ -177,11 +182,11 @@ def test_sync_daily_quotes_returns_zero_when_akshare_empty(
         "total": 0,
         "upserted": 0,
     }
-    assert fake_db.tables["stock_daily_quotes"] == []
+    assert _quotes_rows(fake_db) == []
 
 
 def test_sync_daily_quotes_passes_correct_akshare_symbol_and_dates(
-    client, auth_headers, monkeypatch
+    client, monkeypatch
 ):
     captured = {}
 
@@ -199,7 +204,6 @@ def test_sync_daily_quotes_passes_correct_akshare_symbol_and_dates(
     client.post(
         "/svc/api/stocks/000001/daily-quotes/sync",
         json={"start_date": "2026-01-01", "end_date": "2026-01-31"},
-        headers=auth_headers,
     )
 
     assert captured == {

@@ -1,6 +1,5 @@
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from auth import get_current_user, router as auth_router
 from stocks import router as stocks_router
 
 app = FastAPI(title="Stockit API", version="0.1.0")
@@ -13,10 +12,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth_router, prefix="/svc/api")
-app.include_router(
-    stocks_router, prefix="/svc/api", dependencies=[Depends(get_current_user)]
-)
+app.include_router(stocks_router, prefix="/svc/api")
 
 
 @app.get("/svc/api/health")

@@ -8,10 +8,7 @@
 
 **请求格式**：`POST` 接口使用 `application/json`；`GET` 接口使用 query 参数。
 
-**鉴权**
-- 受保护接口需在请求头携带 `Authorization: Bearer <token>`
-- token 由 `POST /svc/api/auth/login` 获取，HS256 JWT，有效期 7 天
-- 缺失/无效/过期 -> `401`
+**鉴权**：无。所有接口均为开放访问，无需携带凭证。
 
 **统一错误响应**（FastAPI 默认格式）：
 ```json
@@ -22,67 +19,29 @@
 
 ## 2. 鉴权机制
 
-JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
-```json
-{ "user_id": 1, "username": "admin", "exp": 1234567890 }
-```
-测试账号：`admin` / `admin123`（硬编码于 `auth.py`）。
-
-鉴权依赖 `get_current_user`：解码 JWT 失败返回 `401`，成功返回 `{user_id, username}`。
-- `stocks` 路由组整体挂载该依赖，故所有 `/svc/api/stocks/*` 均需鉴权。
-- `auth/login`、`health`、根路径不鉴权。
+无鉴权。接口完全开放，不校验任何凭证。
 
 ---
 
 ## 3. 接口清单
 
-| 方法 | 路径 | 鉴权 | 用途 |
-|------|------|------|------|
-| POST | `/svc/api/auth/login` | 否 | 登录获取 token |
-| POST | `/svc/api/stocks/sync` | 是 | 同步股票列表入库 |
-| GET | `/svc/api/stocks/search` | 是 | 搜索股票 |
-| GET | `/svc/api/stocks/{code}` | 是 | 个股实时快照 |
-| GET | `/svc/api/stocks/{code}/kline` | 是 | K 线数据 |
-| POST | `/svc/api/stocks/{code}/daily-quotes/sync` | 是 | 同步单股日线行情入库 |
-| POST | `/svc/api/stocks/daily-quotes/sync` | 是 | 全市场批量同步日线行情(后台) |
-| GET | `/svc/api/stocks/daily-quotes/sync/{job_id}` | 是 | 查询批量同步任务状态 |
-| GET | `/svc/api/health` | 否 | 健康检查 |
-| GET | `/svc/api` | 否 | 根路径信息 |
+| 方法 | 路径 | 用途 |
+|------|------|------|
+| POST | `/svc/api/stocks/sync` | 同步股票列表入库 |
+| GET | `/svc/api/stocks/search` | 搜索股票 |
+| GET | `/svc/api/stocks/{code}` | 个股实时快照 |
+| GET | `/svc/api/stocks/{code}/kline` | K 线数据 |
+| POST | `/svc/api/stocks/{code}/daily-quotes/sync` | 同步单股日线行情入库 |
+| POST | `/svc/api/stocks/daily-quotes/sync` | 全市场批量同步日线行情(后台) |
+| GET | `/svc/api/stocks/daily-quotes/sync/{job_id}` | 查询批量同步任务状态 |
+| GET | `/svc/api/health` | 健康检查 |
+| GET | `/svc/api` | 根路径信息 |
 
 ---
 
 ## 4. 接口详情
 
-### 4.1 登录
-
-`POST /svc/api/auth/login`
-
-**请求体**
-```json
-{
-  "username": "admin",
-  "password": "admin123"
-}
-```
-
-**成功响应** `200`
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIs...",
-  "user": { "id": 1, "username": "admin" }
-}
-```
-
-**失败响应** `401`
-```json
-{ "detail": "用户名或密码错误" }
-```
-
-**说明**：token 有效期 7 天；用户名或密码错误均返回 401。
-
----
-
-### 4.2 同步股票列表
+### 4.1 同步股票列表
 
 `POST /svc/api/stocks/sync`
 
@@ -108,7 +67,7 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 
 ---
 
-### 4.3 搜索股票
+### 4.2 搜索股票
 
 `GET /svc/api/stocks/search?keyword=xxx`
 
@@ -135,7 +94,7 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 
 ---
 
-### 4.4 个股实时快照
+### 4.3 个股实时快照
 
 `GET /svc/api/stocks/{code}`
 
@@ -189,7 +148,7 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 
 ---
 
-### 4.5 K 线数据
+### 4.4 K 线数据
 
 `GET /svc/api/stocks/{code}/kline?period=day`
 
@@ -236,7 +195,7 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 
 ---
 
-### 4.6 健康检查
+### 4.5 健康检查
 
 `GET /svc/api/health`
 
@@ -245,7 +204,7 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 { "status": "ok" }
 ```
 
-### 4.7 根路径
+### 4.6 根路径
 
 `GET /svc/api`
 
@@ -256,7 +215,7 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 
 ---
 
-### 4.8 同步单股日线行情
+### 4.7 同步单股日线行情
 
 `POST /svc/api/stocks/{code}/daily-quotes/sync`
 
@@ -290,7 +249,7 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 
 ---
 
-### 4.9 全市场批量同步日线行情
+### 4.8 全市场批量同步日线行情
 
 `POST /svc/api/stocks/daily-quotes/sync`
 
@@ -315,7 +274,7 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 
 ---
 
-### 4.10 查询批量同步任务状态
+### 4.9 查询批量同步任务状态
 
 `GET /svc/api/stocks/daily-quotes/sync/{job_id}`
 
@@ -346,31 +305,11 @@ JWT(HS256)，密钥硬编码 `stockit-dev-secret`。Payload 结构：
 
 ---
 
-## 5. 鉴权失败响应
-
-| 场景 | 状态码 | 响应 |
-|------|--------|------|
-| 未携带 Authorization 头 | 401 | `{ "detail": "未认证" }` |
-| token 无效/过期 | 401 | `{ "detail": "token 无效或已过期" }` |
-| 登录凭据错误 | 401 | `{ "detail": "用户名或密码错误" }` |
-
----
-
-## 6. TypeScript 类型定义
+## 5. TypeScript 类型定义
 
 对应前端 `web/src/types/api.ts`，与后端响应一致：
 
 ```typescript
-export interface LoginRequest {
-  username: string;
-  password: string;
-}
-
-export interface LoginResponse {
-  token: string;
-  user: { id: number; username: string };
-}
-
 export interface StockSearchResult {
   code: string;
   name: string;
@@ -440,21 +379,19 @@ export interface BulkSyncStatus {
 
 ---
 
-## 7. 与规格文档的差异
+## 6. 与规格文档的差异
 
 `../prd/frontend-spec.md` 中的早期契约与实际实现存在差异，**以本文档(实际代码)为准**：
 
 | 项目 | 规格(`frontend-spec.md`) | 实际实现 |
 |------|--------------------------|----------|
-| 登录返回字段 | `access_token` | `token` |
-| token 有效期 | 24h | 7 天 |
 | `market` 取值 | `sh`/`sz`/`bj` | `上海`/`深圳`/`北京`/`未知` |
 | K 线 period | `daily`/`weekly`/`monthly` | `day`/`week`/`month` |
 | 快照字段 | `change_pct`/`change_amt` | `change`/`changePercent`(+ `high/low/open/volume/turnover`) |
 
 ---
 
-## 8. 相关文档
+## 7. 相关文档
 
 - [技术架构文档](../design/architecture.md)
 - [数据库设计](../design/database-design/01-architecture-and-schema.md)
