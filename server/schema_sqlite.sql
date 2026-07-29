@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS stock_daily_data (
     boll_upper     REAL,                 -- 布林线上轨
     boll_lower     REAL,                 -- 布林线下轨
 
-    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    created_at     TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 
     -- 联合唯一约束：保证 Upsert 覆盖写入幂等性
     CONSTRAINT uq_code_date UNIQUE (code, trade_date)
@@ -78,8 +78,8 @@ CREATE TABLE IF NOT EXISTS stock_daily_quotes (
     amount         REAL,
     pct_chg        REAL,
     turnover_rate  REAL,
-    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-    updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    created_at     TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    updated_at     TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
     CONSTRAINT uq_code_date_adjust UNIQUE (code, trade_date, adjust)
 );
 
@@ -97,6 +97,6 @@ AFTER UPDATE ON stock_daily_quotes
 FOR EACH ROW
 BEGIN
     UPDATE stock_daily_quotes
-    SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+    SET updated_at = CURRENT_TIMESTAMP
     WHERE id = OLD.id;
 END;
