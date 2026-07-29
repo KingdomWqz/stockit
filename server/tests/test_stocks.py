@@ -167,3 +167,83 @@ def test_legacy_in_memory_cache_removed():
 
     assert not hasattr(stocks, "_CODE_NAME_CACHE")
     assert not hasattr(stocks, "_get_code_name_df")
+
+
+# --------------------------------------------------------------------------- #
+# /stocks/{code}/kline
+# --------------------------------------------------------------------------- #
+def _hist_df():
+    """模仿 AKShare stock_zh_a_hist 的中文列名返回。"""
+    return pd.DataFrame(
+        [
+            {"日期": "2026-07-25", "开盘": 10.0, "最高": 11.0, "最低": 9.5,
+             "收盘": 10.5, "成交量": 1000},
+            {"日期": "2026-07-28", "开盘": 10.5, "最高": 12.0, "最低": 10.2,
+             "收盘": 11.8, "成交量": 2000},
+        ]
+    )
+
+
+def test_kline_returns_day_quotes(client, monkeypatch):
+    captured = {}
+
+    def fake_hist(**kw):
+        captured.update(kw)
+        return _hist_df()
+
+    monkeypatch.setattr(ak, "stock_zh_a_hist", fake_hist)
+
+    resp = client.get("/svc/api/stocks/600519/kline?period=day")
+
+    assert resp.status_code == 200
+    # period=day 映射到 AKShare 的 daily
+    assert captured["period"] == "daily"
+    assert captured["symbol"] == "600519"
+    assert captured["adjust"] == "qfq"
+    data = resp.json()
+    assert data == [
+        {"date": "2026-07-25", "open": 10.0, "high": 11.0, "low": 9.5,
+         "close": 10.5, "volume": 1000.0},
+        {"date": "2026-07-28", "open": 10.5, "high": 12.0, "low": 10.2,
+         "close": 11.8, "volume": 2000.0},
+    ]
+
+
+def test_kline_period_maps_to_weekly_and_monthly(client, monkeypatch):
+    """period=week/month 应分别映射到 AKShare 的 weekly/monthly,而非都返回日线。"""
+    captured = {}
+
+    def fake_hist(**kw):
+        captured.update(kw)
+        return _hist_df()
+
+    monkeypatch.setattr(ak, "stock_zh_a_hist", fake_hist)
+
+    client.get("/svc/api/stocks/600519/kline?period=week")
+    assert captured["period"] == "weekly"
+
+    client.get("/svc/api/stocks/600519/kline?period=month")
+    assert captured["period"] == "monthly"
+
+
+def test_kline_returns_empty_when_akshare_empty(client, monkeypatch):
+    monkeypatch.setattr(
+        ak, "stock_zh_a_hist", lambda **kw: pd.DataFrame()
+    )
+    resp = client.get("/svc/api/stocks/600519/kline")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_kline_returns_502_when_akshare_fails(client, monkeypatch):
+    def boom(**kw):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(ak, "stock_zh_a_hist", boom)
+    resp = client.get("/svc/api/stocks/600519/kline")
+    assert resp.status_code == 502
+
+
+def test_kline_rejects_invalid_period(client):
+    resp = client.get("/svc/api/stocks/600519/kline?period=year")
+    assert resp.status_code == 422

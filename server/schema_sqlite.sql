@@ -1,14 +1,13 @@
 -- ============================================================
 -- Stockit - 本地 SQLite 数据库 Schema (幂等，可重复执行)
--- 来源: ../../../server/schema_sqlite.sql
 --
--- 当前数据库方案为本地 SQLite。原 Supabase PostgREST 方案已退役，
--- 仅供历史背景参考 (见 ../design/database-design/)。
+-- 替代原 Supabase PostgREST 方案。三张表与原 Postgres schema 一一对应：
+--   stocks               股票基础字典
+--   stock_daily_data     每日行情与指标合并宽表 (保留近 90 天)
+--   stock_daily_quotes   原始日线行情表 (完整 OHLCV + adjust)
 --
 -- 首次使用前手动执行：
---   sqlite3 server/data/stockit.db < server/schema_sqlite.sql
---   (或: cd server && uv run python -c "import sqlite3,db_client; \
---        c=db_client.get_client(); c.executescript(open('schema_sqlite.sql').read()); c.commit()")
+--   sqlite3 data/stockit.db < server/schema_sqlite.sql
 -- ============================================================
 
 -- ========================================================
