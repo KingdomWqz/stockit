@@ -117,6 +117,7 @@ def test_bulk_sync_returns_202_and_pending_status(client, monkeypatch):
     assert status["start_date"] == "2026-07-24"
     assert status["end_date"] == "2026-07-24"
     assert status["total_stocks"] == 0
+    assert status["total_dates"] == 1
 
 
 def test_bulk_sync_happy_path_completes(client, fake_db, monkeypatch):

@@ -292,6 +292,7 @@ class BulkSyncJob:
     start_date: date
     end_date: date
     total_stocks: int = 0
+    total_dates: int = 0
     upserted: int = 0
     empty: int = 0
     failed: int = 0
@@ -308,6 +309,7 @@ class BulkSyncJob:
             "start_date": self.start_date.isoformat(),
             "end_date": self.end_date.isoformat(),
             "total_stocks": self.total_stocks,
+            "total_dates": self.total_dates,
             "upserted": self.upserted,
             "empty": self.empty,
             "failed": self.failed,
@@ -385,6 +387,7 @@ def _run_bulk_sync(job_id: str, start_date: date, end_date: date) -> None:
         codes = db_client.get_active_stock_codes()
         with _BULK_JOBS_LOCK:
             job.total_stocks = len(codes)
+            job.total_dates = (end_date - start_date).days + 1
         start_str = start_date.strftime("%Y%m%d")
         end_str = end_date.strftime("%Y%m%d")
 
@@ -451,6 +454,7 @@ def sync_bulk_daily_quotes(
         status="pending",
         start_date=body.start_date,
         end_date=body.end_date,
+        total_dates=(body.end_date - body.start_date).days + 1,
     )
     with _BULK_JOBS_LOCK:
         _BULK_JOBS[job_id] = job
