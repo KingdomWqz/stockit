@@ -108,7 +108,8 @@ def _fetch_sina_spot(code: str) -> dict | None:
             "volume": float(fields[8]),
             "turnover": float(fields[9]),
         }
-    except Exception:
+    except Exception as exc:
+        logger.warning("新浪实时行情拉取失败 (code=%s): %s", code, exc)
         return None
 
 
@@ -116,25 +117,18 @@ def _fetch_sina_spot(code: str) -> dict | None:
 def sync_stocks():
     try:
         df = ak.stock_info_a_code_name()
-    except Exception:
+    except Exception as exc:
+        logger.error("AKShare 股票列表拉取失败: %s", exc)
         raise HTTPException(status_code=502, detail="股票列表获取失败")
     return db_client.sync_stock_list(df)
 
 
 @router.get("/stocks/search")
 def search_stocks(keyword: str = Query(..., min_length=1)):
-    resp = (
-        db_client.get_client()
-        .table("stocks")
-        .select("code,name")
-        .eq("is_active", True)
-        .or_(f"name.ilike.%{keyword}%,code.like.{keyword}%")
-        .limit(20)
-        .execute()
-    )
+    rows = db_client.search_active_stocks(keyword, limit=20)
     return [
         {"code": row["code"], "name": row["name"], "market": _market_label(row["code"])}
-        for row in resp.data
+        for row in rows
     ]
 
 
@@ -164,23 +158,52 @@ def stock_snapshot(code: str):
     }
 
 
+# 前端 period (day/week/month) -> AKShare stock_zh_a_hist 的 period 参数
+_KLINE_PERIOD_MAP = {"day": "daily", "week": "weekly", "month": "monthly"}
+
+# AKShare stock_zh_a_hist 返回中文列名 -> 统一英文字段
+_KLINE_COLUMN_MAP = {
+    "日期": "date",
+    "开盘": "open",
+    "最高": "high",
+    "最低": "low",
+    "收盘": "close",
+    "成交量": "volume",
+}
+
+
 @router.get("/stocks/{code}/kline")
 def stock_kline(
     code: str,
     period: str = Query("day", pattern=r"^(day|week|month)$"),
 ):
-    prefix = _sina_prefix(code)
-    symbol = f"{prefix}{code}"
+    """获取 K 线数据。``period`` 映射到 AKShare 的 daily/weekly/monthly 口径。
+
+    用 ``ak.stock_zh_a_hist`` 而非 ``ak.stock_zh_a_daily``:后者只返回日线、
+    忽略 period 参数,导致周K/月K切换无效。``stock_zh_a_hist`` 原生支持
+    weekly/monthly,且按 ``symbol`` (纯代码) 调用,无需 sina 前缀。
+    """
+    symbol = code
+    ak_period = _KLINE_PERIOD_MAP[period]
 
     try:
-        df = ak.stock_zh_a_daily(
-            symbol=symbol, start_date="19900101", end_date="21000101", adjust="qfq"
+        df = ak.stock_zh_a_hist(
+            symbol=symbol,
+            period=ak_period,
+            start_date="19900101",
+            end_date="21000101",
+            adjust="qfq",
         )
-    except Exception:
+    except Exception as exc:
+        logger.error("AKShare K线拉取失败 (code=%s, period=%s): %s", code, period, exc)
         raise HTTPException(status_code=502, detail="K线数据获取失败")
 
     if df is None or df.empty:
         return []
+
+    # 仅保留映射表中存在的列并重命名为英文
+    valid_cols = [c for c in _KLINE_COLUMN_MAP if c in df.columns]
+    mapped = df[valid_cols].rename(columns=_KLINE_COLUMN_MAP)
 
     return [
         {
@@ -191,7 +214,7 @@ def stock_kline(
             "close": float(r["close"]),
             "volume": float(r["volume"]),
         }
-        for _, r in df.iterrows()
+        for _, r in mapped.iterrows()
     ]
 
 
@@ -269,6 +292,7 @@ class BulkSyncJob:
     start_date: date
     end_date: date
     total_stocks: int = 0
+    total_dates: int = 0
     upserted: int = 0
     empty: int = 0
     failed: int = 0
@@ -285,6 +309,7 @@ class BulkSyncJob:
             "start_date": self.start_date.isoformat(),
             "end_date": self.end_date.isoformat(),
             "total_stocks": self.total_stocks,
+            "total_dates": self.total_dates,
             "upserted": self.upserted,
             "empty": self.empty,
             "failed": self.failed,
@@ -308,7 +333,7 @@ def _sync_one_stock(code: str, start_str: str, end_str: str) -> tuple[str, int]:
     """同步单只股票 qfq 日线,含 2 次线性退避重试。
 
     重试对标 ``scripts/bench_daily_quotes_sync.py`` 的 ``sync_one``:akshare 拉取
-    异常或数据库写入异常均重试(后者因 PostgREST 偶发断连);空 DataFrame 视为
+    异常或数据库写入异常均重试(后者因 SQLite 偶发锁竞争);空 DataFrame 视为
     暂停股的有效结果,不重试。
 
     :return: ``(kind, n)`` 其中 kind ∈ {"upserted","empty","failed"}
@@ -362,6 +387,7 @@ def _run_bulk_sync(job_id: str, start_date: date, end_date: date) -> None:
         codes = db_client.get_active_stock_codes()
         with _BULK_JOBS_LOCK:
             job.total_stocks = len(codes)
+            job.total_dates = (end_date - start_date).days + 1
         start_str = start_date.strftime("%Y%m%d")
         end_str = end_date.strftime("%Y%m%d")
 
@@ -428,6 +454,7 @@ def sync_bulk_daily_quotes(
         status="pending",
         start_date=body.start_date,
         end_date=body.end_date,
+        total_dates=(body.end_date - body.start_date).days + 1,
     )
     with _BULK_JOBS_LOCK:
         _BULK_JOBS[job_id] = job

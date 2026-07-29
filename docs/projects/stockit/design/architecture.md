@@ -11,7 +11,6 @@ Stockit 是一个个人 A 股选股工具，提供**股票搜索**与 **K 线查
 **后端**(`server/`)
 - Python 3.12+，`uv` 管理依赖
 - FastAPI + uvicorn（Web 框架 / ASGI 服务器）
-- PyJWT（JWT 鉴权）
 - akshare（A 股数据）、requests（新浪行情）
 - supabase-py（数据库客户端，service role key 直连）
 - pydantic（请求模型校验）
@@ -19,8 +18,8 @@ Stockit 是一个个人 A 股选股工具，提供**股票搜索**与 **K 线查
 **前端**(`web/`)
 - Next.js 16（App Router）+ React 19
 - TanStack Query v5（数据请求与缓存）
-- axios（HTTP 客户端，拦截器注入 JWT）
-- Zustand（鉴权状态 + 最近浏览记录，localStorage 持久化）
+- axios（HTTP 客户端）
+- Zustand（最近浏览记录，localStorage 持久化）
 - lightweight-charts（K 线图渲染）
 - Tailwind CSS v4、lucide-react（图标）
 
@@ -34,17 +33,15 @@ Stockit 是一个个人 A 股选股工具，提供**股票搜索**与 **K 线查
                            │
                            ▼
                 ┌──────────────────────┐
-                │   Next.js (web/)     │   App Router + 中间件路由守卫
+                │   Next.js (web/)     │   App Router
                 │   - 页面/组件渲染      │   rewrites: /svc/api/* -> :8000
                 │   - TanStack Query   │
-                │   - Zustand (JWT)    │
                 └──────────┬───────────┘
                            │  HTTP (同源反向代理 /svc/api/*)
                            ▼
                 ┌──────────────────────┐
                 │  FastAPI (server/)   │   uvicorn :8000
-                │  - JWT 鉴权 (HTTPBearer)
-                │  - 路由: auth / stocks
+                │  - 路由: stocks
                 │  - CORS: *            │
                 └───┬──────┬──────┬─────┘
             读/写    │      │      │  定时触发
@@ -69,7 +66,6 @@ Stockit 是一个个人 A 股选股工具，提供**股票搜索**与 **K 线查
 ```
 server/
 ├── main.py          # FastAPI 应用入口，挂载路由与中间件
-├── auth.py          # 鉴权：JWT 签发 + get_current_user 依赖
 ├── stocks.py        # 股票业务路由：搜索/快照/K线/同步
 ├── db_client.py     # Supabase 客户端封装：股票字典与指标读写
 ├── pyproject.toml   # 依赖与 pytest 配置
@@ -79,11 +75,9 @@ server/
 **应用装配**(`main.py`)
 - 创建 `FastAPI(title="Stockit API", version="0.1.0")`
 - 注册 CORS 中间件：`allow_origins=["*"]`、允许凭证与全部方法/头
-- `auth_router` 挂载于 `/svc/api`（无鉴权）
-- `stocks_router` 挂载于 `/svc/api`，**整组依赖** `Depends(get_current_user)`，即所有股票接口均需 JWT
+- `stocks_router` 挂载于 `/svc/api`，所有股票接口均开放访问、无需鉴权
 
 **分层职责**
-- `auth.py`：签发/校验 JWT，硬编码测试用户(`admin/admin123`)
 - `stocks.py`：业务路由，直接调用 AKShare/新浪获取行情，调用 `db_client` 读写数据库
 - `db_client.py`：Supabase 客户端懒加载与缓存，封装 `sync_stock_list`、`upsert_indicators`、`clean_expired_data`
 
@@ -96,34 +90,27 @@ web/src/
 ├── app/                      # App Router 路由
 │   ├── layout.tsx            # 根布局：Providers + Header
 │   ├── page.tsx              # 首页：搜索 + 最近查看
-│   ├── login/page.tsx        # 登录页
 │   └── stocks/[code]/page.tsx# 个股 K 线页
 ├── components/
 │   ├── Providers.tsx         # QueryClientProvider
-│   ├── layout/Header.tsx     # 顶栏 + 退出
+│   ├── layout/Header.tsx     # 顶栏
 │   ├── stock/                # StockSearch / StockHeader / PeriodSelector
 │   └── charts/KlineChart.tsx # lightweight-charts 封装
 ├── hooks/use-stocks.ts       # TanStack Query hooks
-├── lib/api.ts                # axios 实例 + 拦截器
-├── stores/                   # Zustand: auth.ts / recent.ts
-├── types/api.ts              # 接口类型定义
-└── middleware.ts             # 路由守卫
+├── lib/api.ts                # axios 实例
+├── stores/recent.ts          # Zustand: 最近浏览记录
+└── types/api.ts              # 接口类型定义
 ```
 
-**路由与守卫**
-- 公开路由仅 `/login`；其余(`/`、`/stocks/:code`)需登录
-- `middleware.ts` 读取 `token` cookie：无 token 访问受保护页 → 重定向 `/login`；已登录访问 `/login` → 重定向 `/`
+**路由**
+- 所有路由(`/`、`/stocks/:code`)均为开放访问，无需登录
 
 **数据流**
 ```
 组件 → useXxx hook (TanStack Query) → api.ts (axios)
-                                          │
-                          请求拦截: 注入 Authorization: Bearer <token>
-                          响应拦截: 401 → logout + 清 cookie + 跳 /login
 ```
 
 **状态管理**
-- `auth.ts`：token + user，`persist` 到 `localStorage`(`auth-storage`)
 - `recent.ts`：最近浏览股票(最多 10 条)，`persist` 到 `localStorage`(`recent-stocks`)
 
 **K 线图**(`KlineChart.tsx`)
@@ -161,22 +148,7 @@ AKShare stock_zh_a_daily()        ──kline──▶ 实时返回前端 (不�
 
 ## 7. 鉴权机制
 
-```
-登录: POST /svc/api/auth/login  ──admin/admin123──▶  签发 JWT (HS256, 7天有效)
-                                                          │
-受保护接口: GET/POST /svc/api/stocks/*                      │
-     │  Authorization: Bearer <token> ◀──────────────────┘
-     ▼
- get_current_user: 解码 JWT → {user_id, username}
-     │ 失败/缺失
-     └──▶ 401 {"detail": "未认证" | "token 无效或已过期"}
-```
-
-- 算法：HS256，密钥硬编码 `stockit-dev-secret`
-- Payload：`{user_id, username, exp}`，有效期 7 天(`86400*7` 秒)
-- 前端：token 存 `localStorage` + `cookie`，axios 拦截器自动注入
-
-> 安全提示：密钥与测试账号硬编码于 `auth.py`，仅适用于个人本地场景。
+无鉴权。后端接口完全开放，不校验任何凭证；前端无登录页与路由守卫。适用于个人本地场景，部署到公网时需自行在反向代理层加访问控制。
 
 ## 8. 部署与运行
 
@@ -198,8 +170,6 @@ AKShare stock_zh_a_daily()        ──kline──▶ 实时返回前端 (不�
 
 | 项目 | 规格文档 | 实际实现 |
 |------|----------|----------|
-| 登录返回字段 | `access_token` | `token` |
-| token 有效期 | 24h | 7 天 |
 | `market` 取值 | `sh/sz/bj` | 中文 `上海/深圳/北京/未知` |
 | K 线 period | `daily/weekly/monthly` | `day/week/month` |
 | 快照字段 | `change_pct/change_amt` | `change/changePercent` + `high/low/open/volume/turnover` |

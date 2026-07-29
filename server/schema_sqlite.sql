@@ -1,14 +1,13 @@
 -- ============================================================
 -- Stockit - 本地 SQLite 数据库 Schema (幂等，可重复执行)
--- 来源: ../../../server/schema_sqlite.sql
 --
--- 当前数据库方案为本地 SQLite。原 Supabase PostgREST 方案已退役，
--- 仅供历史背景参考 (见 ../design/database-design/)。
+-- 替代原 Supabase PostgREST 方案。三张表与原 Postgres schema 一一对应：
+--   stocks               股票基础字典
+--   stock_daily_data     每日行情与指标合并宽表 (保留近 90 天)
+--   stock_daily_quotes   原始日线行情表 (完整 OHLCV + adjust)
 --
 -- 首次使用前手动执行：
---   sqlite3 server/data/stockit.db < server/schema_sqlite.sql
---   (或: cd server && uv run python -c "import sqlite3,db_client; \
---        c=db_client.get_client(); c.executescript(open('schema_sqlite.sql').read()); c.commit()")
+--   sqlite3 data/stockit.db < server/schema_sqlite.sql
 -- ============================================================
 
 -- ========================================================
@@ -47,7 +46,7 @@ CREATE TABLE IF NOT EXISTS stock_daily_data (
     boll_upper     REAL,                 -- 布林线上轨
     boll_lower     REAL,                 -- 布林线下轨
 
-    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    created_at     TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 
     -- 联合唯一约束：保证 Upsert 覆盖写入幂等性
     CONSTRAINT uq_code_date UNIQUE (code, trade_date)
@@ -79,8 +78,8 @@ CREATE TABLE IF NOT EXISTS stock_daily_quotes (
     amount         REAL,
     pct_chg        REAL,
     turnover_rate  REAL,
-    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-    updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    created_at     TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+    updated_at     TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
     CONSTRAINT uq_code_date_adjust UNIQUE (code, trade_date, adjust)
 );
 
@@ -98,6 +97,6 @@ AFTER UPDATE ON stock_daily_quotes
 FOR EACH ROW
 BEGIN
     UPDATE stock_daily_quotes
-    SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+    SET updated_at = CURRENT_TIMESTAMP
     WHERE id = OLD.id;
 END;

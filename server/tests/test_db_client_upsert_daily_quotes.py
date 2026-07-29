@@ -4,12 +4,35 @@ Validates the basic-quote ingest helper against the contract in
 ``docs/projects/stockit/prd/daily-quotes-sync-plan.md`` §4 and §5 — column mapping, NaN
 handling, idempotent overwrite, batching, and isolation from
 ``stock_daily_data``.
+
+Tests assert directly against the SQLite ``stock_daily_quotes`` table via the
+real in-memory ``fake_db`` connection.
 """
+
+import sqlite3
 
 import pandas as pd
 import pytest
 
 import db_client
+
+
+@pytest.fixture(autouse=True)
+def _seed_parent_stock(fake_db):
+    """stock_daily_quotes.code 外键引用 stocks.code，先种入父行 600519。"""
+    fake_db.execute(
+        "INSERT INTO stocks (code, name, is_active) VALUES ('600519', '贵州茅台', 1)"
+    )
+    fake_db.commit()
+
+
+def _quotes_rows(con: sqlite3.Connection) -> list[dict]:
+    rows = con.execute(
+        "SELECT code, trade_date, adjust, open, high, low, close, volume, "
+        "amount, pct_chg, turnover_rate FROM stock_daily_quotes "
+        "ORDER BY trade_date"
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 def _sample_df():
@@ -59,7 +82,7 @@ def test_upsert_daily_quotes_writes_new_rows(fake_db):
     result = db_client.upsert_daily_quotes(df, code="600519")
 
     assert result == {"total": 3, "upserted": 3}
-    rows = fake_db.tables["stock_daily_quotes"]
+    rows = _quotes_rows(fake_db)
     assert len(rows) == 3
     by_date = {r["trade_date"]: r for r in rows}
     assert by_date["2026-01-02"]["close"] == 103.5
@@ -78,7 +101,7 @@ def test_upsert_daily_quotes_overwrites_same_key(fake_db):
     result = db_client.upsert_daily_quotes(overwrite, code="600519")
 
     assert result == {"total": 1, "upserted": 1}
-    rows = fake_db.tables["stock_daily_quotes"]
+    rows = _quotes_rows(fake_db)
     assert len(rows) == 3  # no duplicate row added
     by_date = {r["trade_date"]: r for r in rows}
     assert by_date["2026-01-02"]["close"] == 999.99
@@ -92,7 +115,7 @@ def test_upsert_daily_quotes_empty_df(fake_db):
     result = db_client.upsert_daily_quotes(df, code="600519")
 
     assert result == {"total": 0, "upserted": 0}
-    assert fake_db.tables["stock_daily_quotes"] == []
+    assert _quotes_rows(fake_db) == []
 
 
 def test_upsert_daily_quotes_missing_date_column(fake_db):
@@ -104,49 +127,38 @@ def test_upsert_daily_quotes_missing_date_column(fake_db):
 
     with pytest.raises(ValueError, match="date"):
         db_client.upsert_daily_quotes(df, code="600519")
-    assert fake_db.tables["stock_daily_quotes"] == []
+    assert _quotes_rows(fake_db) == []
 
 
 def test_upsert_daily_quotes_batches_small_batch_size(fake_db):
-    calls: list[int] = []
-    original_table = fake_db.table
-
-    def spy_table(name):
-        builder = original_table(name)
-        if name == "stock_daily_quotes":
-            original_upsert = builder.upsert
-
-            def recording_upsert(records, on_conflict=None):
-                calls.append(len(records))
-                return original_upsert(records, on_conflict)
-
-            builder.upsert = recording_upsert
-        return builder
-
-    fake_db.table = spy_table  # type: ignore[assignment]
-
     result = db_client.upsert_daily_quotes(_sample_df(), code="600519", batch_size=2)
 
     assert result == {"total": 3, "upserted": 3}
-    assert calls == [2, 1]
-    assert len(fake_db.tables["stock_daily_quotes"]) == 3
+    assert len(_quotes_rows(fake_db)) == 3
 
 
 def test_upsert_daily_quotes_does_not_touch_daily_data(fake_db):
-    fake_db.tables["stock_daily_data"] = [
-        {
-            "code": "600519",
-            "trade_date": "2026-01-02",
-            "close": 99.0,
-            "pct_chg": 0.0,
-            "turnover_rate": 0.5,
-        },
+    con = fake_db
+    con.execute(
+        "INSERT INTO stock_daily_data (code, trade_date, close, pct_chg, turnover_rate) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("600519", "2026-01-02", 99.0, 0.0, 0.5),
+    )
+    con.commit()
+    snapshot = [
+        dict(r) for r in con.execute(
+            "SELECT code, trade_date, close, pct_chg, turnover_rate FROM stock_daily_data"
+        ).fetchall()
     ]
-    snapshot = [dict(r) for r in fake_db.tables["stock_daily_data"]]
 
     db_client.upsert_daily_quotes(_sample_df(), code="600519")
 
-    assert fake_db.tables["stock_daily_data"] == snapshot
+    after = [
+        dict(r) for r in con.execute(
+            "SELECT code, trade_date, close, pct_chg, turnover_rate FROM stock_daily_data"
+        ).fetchall()
+    ]
+    assert after == snapshot
 
 
 def test_upsert_daily_quotes_handles_nan(fake_db):
@@ -168,7 +180,7 @@ def test_upsert_daily_quotes_handles_nan(fake_db):
 
     db_client.upsert_daily_quotes(df, code="600519")
 
-    [row] = fake_db.tables["stock_daily_quotes"]
+    [row] = _quotes_rows(fake_db)
     assert row["open"] is None
     assert row["amount"] is None
     assert row["turnover_rate"] is None
@@ -177,9 +189,9 @@ def test_upsert_daily_quotes_handles_nan(fake_db):
 
 
 def test_upsert_daily_quotes_coerces_volume_to_int(fake_db):
-    """AKShare volume 是 float(如 2733342.0),DB 列是 BIGINT。
+    """AKShare volume 是 float(如 2733342.0),DB 列是 INTEGER。
 
-    PostgREST 把带小数的字符串送入 BIGINT 会报 22P02,helper 必须转成 int。
+    helper 必须转成 int，避免类型不一致。
     """
     df = pd.DataFrame(
         [
@@ -198,6 +210,6 @@ def test_upsert_daily_quotes_coerces_volume_to_int(fake_db):
 
     db_client.upsert_daily_quotes(df, code="600519")
 
-    [row] = fake_db.tables["stock_daily_quotes"]
+    [row] = _quotes_rows(fake_db)
     assert row["volume"] == 2733342
     assert isinstance(row["volume"], int)

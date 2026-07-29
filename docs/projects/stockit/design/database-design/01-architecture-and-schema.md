@@ -1,5 +1,12 @@
 # 股票指标数据库设计与维护技术文档 (Supabase 个人本地版)
 
+> **⚠️ 历史背景文档**：本文档描述的是已退役的 Supabase PostgREST 方案，仅作历史参考。
+> 当前数据库方案已迁移至**本地 SQLite**，建表脚本见 `server/schema_sqlite.sql`
+> （镜像于 `docs/projects/stockit/schema/schema.sql`）。表结构与字段命名与本文档一致，
+> 仅类型映射调整（`BOOLEAN`→`INTEGER 0/1`、`BIGINT IDENTITY`→`INTEGER AUTOINCREMENT`、
+> `TIMESTAMPTZ`→`TEXT ISO8601`），清理逻辑由 Python 端 `db_client.clean_expired_data`
+> 取代原 plpgsql 存储过程。首次使用前需手动执行建表脚本（见根 README）。
+
 本文档专为**单人本地开发/运行**场景设计。针对 Supabase 免费套餐（容量上限 500 MB）的限制，采用**滑动数据保留**与**字段类型精简**策略，确保数据库长期稳定运行且**永久免费**。
 
 ---
