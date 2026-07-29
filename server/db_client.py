@@ -329,6 +329,7 @@ def get_active_stock_codes(batch_size: int = 1000) -> list[str]:
         with _lock:
             rows = con.execute(
                 "SELECT code FROM stocks WHERE is_active = 1 "
+                "AND (code LIKE '6%' OR code LIKE '0%' OR code LIKE '3%') "
                 "ORDER BY code LIMIT ? OFFSET ?",
                 (batch_size, offset),
             ).fetchall()
@@ -362,7 +363,9 @@ def search_active_stocks(keyword: str, limit: int = 20) -> list[dict]:
     with _lock:
         rows = con.execute(
             "SELECT code, name FROM stocks "
-            "WHERE is_active = 1 AND (name LIKE ? OR code LIKE ?) "
+            "WHERE is_active = 1 "
+            "AND (code LIKE '6%' OR code LIKE '0%' OR code LIKE '3%') "
+            "AND (name LIKE ? OR code LIKE ?) "
             "ORDER BY code LIMIT ?",
             (pattern_name, pattern_code, limit),
         ).fetchall()
