@@ -30,3 +30,4 @@ uv run python -c "import sqlite3,db_client; c=db_client.get_client(); c.executes
 
 https://deepwiki.com/myhhub/stock
 https://github.com/myhhub/stock
+没有做 技术指标计算核心（instock/core/indicator/) 、K线形态识别（instock/core/kline/）、策略选股算法（instock/core/strategy/），规划一下
