@@ -1,188 +1,49 @@
 """Shared test fixtures.
 
-The Supabase client is mocked at the ``db_client.get_client`` seam with an
-in-memory fake that re-implements the small subset of the query-builder DSL
-Stockit uses (select / eq / in_ / like / or_ / limit / upsert / update /
-delete). This lets behaviour-level tests run without a real database or
-network.
+Replaces the previous FakeClient/PostgREST query-builder fake with a real
+in-memory SQLite database. The fixture executes ``server/schema_sqlite.sql``
+to create the three tables, then monkeypatches ``db_client.get_client`` to
+return the test connection — so all behaviour-level tests run against a real
+database without network or Supabase DSL.
 """
 
-import time
+import os
 
-import jwt
 import pytest
 
 import db_client
-from auth import SECRET
 
-
-class _Response:
-    def __init__(self, data):
-        self.data = data
-
-
-def _match_pattern(value, pattern, case_insensitive):
-    v = str(value)
-    p = pattern
-    if case_insensitive:
-        v, p = v.lower(), p.lower()
-    starts, ends = p.startswith("%"), p.endswith("%")
-    core = p.strip("%")
-    if starts and ends:
-        return core in v
-    if starts:
-        return v.endswith(core)
-    if ends:
-        return v.startswith(core)
-    return v == core
-
-
-class _QueryBuilder:
-    def __init__(self, rows):
-        self._rows = rows
-        self._cols = ("*",)
-        self._and_filters = []
-        self._or_filters = []
-        self._limit = None
-        self._range = None
-        self._mode = "select"
-        self._payload = None
-        self._conflict_keys = ("code",)
-
-    def select(self, *cols):
-        self._mode = "select"
-        if len(cols) == 1 and isinstance(cols[0], str) and "," in cols[0]:
-            self._cols = tuple(c.strip() for c in cols[0].split(","))
-        else:
-            self._cols = cols or ("*",)
-        return self
-
-    def eq(self, column, value):
-        self._and_filters.append(("eq", column, value))
-        return self
-
-    def in_(self, column, values):
-        self._and_filters.append(("in", column, list(values)))
-        return self
-
-    def like(self, column, pattern):
-        self._and_filters.append(("like", column, pattern))
-        return self
-
-    def or_(self, query):
-        for clause in query.split(","):
-            col, op, pattern = clause.split(".", 2)
-            self._or_filters.append((col.strip(), op.strip(), pattern))
-        return self
-
-    def limit(self, n):
-        self._limit = n
-        return self
-
-    def range(self, low, high):
-        """Mirror PostgREST inclusive ``[low, high]`` row window."""
-        self._range = (low, high)
-        return self
-
-    def upsert(self, records, on_conflict=None):
-        self._mode = "upsert"
-        self._payload = records
-        if on_conflict:
-            self._conflict_keys = tuple(c.strip() for c in on_conflict.split(","))
-        return self
-
-    def update(self, payload):
-        self._mode = "update"
-        self._payload = payload
-        return self
-
-    def delete(self):
-        self._mode = "delete"
-        return self
-
-    def _matches(self, row):
-        for op, column, value in self._and_filters:
-            if op == "eq" and row.get(column) != value:
-                return False
-            if op == "in" and row.get(column) not in value:
-                return False
-            if op == "like" and not _match_pattern(row.get(column, ""), value, False):
-                return False
-        if not self._or_filters:
-            return True
-        for col, op, pattern in self._or_filters:
-            if op == "ilike" and _match_pattern(row.get(col, ""), pattern, True):
-                return True
-            if op == "like" and _match_pattern(row.get(col, ""), pattern, False):
-                return True
-        return False
-
-    def _same_key(self, row, rec):
-        return all(row.get(k) == rec.get(k) for k in self._conflict_keys)
-
-    def execute(self):
-        matched = [r for r in self._rows if self._matches(r)]
-        if self._mode == "select":
-            if self._range is not None:
-                low, high = self._range
-                matched = matched[low:high + 1]
-            if self._limit is not None:
-                matched = matched[: self._limit]
-            if self._cols == ("*",):
-                return _Response([dict(r) for r in matched])
-            return _Response([{c: r.get(c) for c in self._cols} for r in matched])
-        if self._mode == "upsert":
-            for rec in self._payload:
-                existing = next(
-                    (r for r in self._rows if self._same_key(r, rec)), None
-                )
-                if existing is None:
-                    self._rows.append(dict(rec))
-                else:
-                    existing.update(rec)
-            return _Response(self._payload)
-        if self._mode == "update":
-            for r in matched:
-                r.update(self._payload)
-            return _Response([dict(r) for r in matched])
-        if self._mode == "delete":
-            # 从行集合中移除匹配行（原地倒序删，避免索引错位）
-            matched_set = {id(r) for r in matched}
-            self._rows[:] = [r for r in self._rows if id(r) not in matched_set]
-            return _Response([dict(r) for r in matched])
-        return _Response(None)
-
-
-class FakeClient:
-    def __init__(self):
-        self.tables = {"stocks": [], "stock_daily_data": [], "stock_daily_quotes": []}
-
-    def table(self, name):
-        return _QueryBuilder(self.tables[name])
-
-    def rpc(self, *args, **kwargs):  # pragma: no cover
-        raise AssertionError("rpc not expected in these tests")
+_SCHEMA_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "schema_sqlite.sql",
+)
 
 
 @pytest.fixture
 def fake_db(monkeypatch):
-    """Replace ``db_client.get_client`` with an in-memory fake and return it."""
-    client = FakeClient()
-    monkeypatch.setattr(db_client, "get_client", lambda: client)
-    return client
+    """Return a real in-memory SQLite connection backed by the project schema.
 
+    Kept under the historical name ``fake_db`` so existing tests and their
+    seed/inspect helpers keep working; it now returns a ``sqlite3.Connection``
+    with ``row_factory = sqlite3.Row`` instead of a fake client.
 
-def make_token(username="admin", user_id=1, exp_delta=86400 * 7):
-    return jwt.encode(
-        {"user_id": user_id, "username": username, "exp": int(time.time()) + exp_delta},
-        SECRET,
-        algorithm="HS256",
-    )
+    Tests seed/inspect rows via plain SQL rather than the removed query-builder
+    DSL. ``db_client.get_client`` is patched to return this connection.
+    """
+    import sqlite3
 
+    con = sqlite3.connect(":memory:", check_same_thread=False)
+    con.row_factory = sqlite3.Row
+    con.execute("PRAGMA foreign_keys=ON")
+    with open(_SCHEMA_PATH) as f:
+        con.executescript(f.read())
+    con.commit()
 
-@pytest.fixture
-def auth_headers():
-    return {"Authorization": f"Bearer {make_token()}"}
+    monkeypatch.setattr(db_client, "get_client", lambda: con)
+    try:
+        yield con
+    finally:
+        con.close()
 
 
 @pytest.fixture

@@ -1,3 +1,9 @@
+> **⚠️ 历史背景文档**：本节描述的 plpgsql 存储过程与 Supabase SDK 写法已退役，
+> 仅作历史参考。当前方案为**本地 SQLite**：清理逻辑改由 Python 端
+> `db_client.clean_expired_data(retention_days)` 直接执行
+> `DELETE FROM stock_daily_data WHERE trade_date < date('now', '-N days')`，
+> 不再使用 RPC/存储过程。建表与 SDK 现状见 `server/schema_sqlite.sql` 与 `server/db_client.py`。
+
 ## 3. 定时清理存储过程 (SQL Stored Procedure)
 
 在 Supabase 中创建一个 SQL 函数，用于在本地任务完成写入后自动清理过期数据：

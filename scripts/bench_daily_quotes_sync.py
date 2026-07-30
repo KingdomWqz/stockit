@@ -3,79 +3,73 @@
 
 Calls POST /svc/api/stocks/{code}/daily-quotes/sync for every stock in the
 `stocks` table, measures total elapsed time + throughput, and reports
-per-stock success/failure counts. Disk size is measured separately via
-Supabase SQL before/after this run.
+per-stock success/failure counts.
 
 Usage (run from repo root, with the server up on :8000):
-    uv run --directory server python scripts/bench_daily_quotes_sync.py "$TOKEN"
+    uv run --directory server python scripts/bench_daily_quotes_sync.py
     # optional env: CONCURRENCY=8 STOCKIT_API_BASE=... START_DATE=... END_DATE=...
 """
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from dotenv import load_dotenv
-from supabase import create_client
 
-_ENV = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "server", ".env")
+_SERVER_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "server"
+)
+_ENV = os.path.join(_SERVER_DIR, ".env")
 load_dotenv(_ENV)  # explicitly load server/.env regardless of cwd
 
 BASE = os.getenv("STOCKIT_API_BASE", "http://localhost:8000/svc/api").rstrip("/")
-TOKEN = os.environ.get("STOCKIT_TOKEN") or (sys.argv[1] if len(sys.argv) > 1 else "")
 START_DATE = os.environ.get("START_DATE", "2026-07-24")
 END_DATE = os.environ.get("END_DATE", "2026-07-24")
 CONCURRENCY = int(os.environ.get("CONCURRENCY", "8"))
 TIMEOUT = 30
 
 
-def _paginated_select(select: str, table: str) -> list[dict]:
-    """Page through a PostgREST select (capped at 1000 rows/page)."""
-    client = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
-    rows: list[dict] = []
-    offset = 0
-    page = 1000
-    while True:
-        resp = client.table(table).select(select).order("code").range(offset, offset + page - 1).execute()
-        rows.extend(resp.data)
-        if len(resp.data) < page:
-            break
-        offset += page
-    return rows
+def _read_only_connection() -> sqlite3.Connection:
+    """打开只读 SQLite 连接，DATABASE_PATH 默认 data/stockit.db。"""
+    db_path = os.getenv("DATABASE_PATH", os.path.join(_SERVER_DIR, "data", "stockit.db"))
+    if not os.path.isabs(db_path):
+        db_path = os.path.join(_SERVER_DIR, db_path)
+    uri = f"file:{db_path}?mode=ro"
+    con = sqlite3.connect(uri, uri=True)
+    con.row_factory = sqlite3.Row
+    return con
 
 
 def fetch_codes() -> list[str]:
     """Every stock code from `stocks`."""
-    return [r["code"] for r in _paginated_select("code", "stocks")]
+    con = _read_only_connection()
+    try:
+        rows = con.execute("SELECT code FROM stocks ORDER BY code").fetchall()
+    finally:
+        con.close()
+    return [r["code"] for r in rows]
 
 
 def fetch_missing_codes(day: str) -> list[str]:
-    """Codes in `stocks` that have NO row in `stock_daily_quotes` for `day`.
-
-    Uses SQL via the PostgREST RPC-free path is not possible for NOT EXISTS, so
-    we compute the set difference in Python: all stocks minus codes present.
-    """
-    all_codes = {r["code"] for r in _paginated_select("code", "stocks")}
-    present: set[str] = set()
-    offset = 0
-    page = 1000
-    client = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
-    while True:
-        resp = (
-            client.table("stock_daily_quotes")
-            .select("code")
-            .eq("trade_date", day)
-            .range(offset, offset + page - 1)
-            .execute()
-        )
-        present.update(r["code"] for r in resp.data)
-        if len(resp.data) < page:
-            break
-        offset += page
-    return sorted(all_codes - present)
+    """Codes in `stocks` that have NO row in `stock_daily_quotes` for `day`."""
+    con = _read_only_connection()
+    try:
+        rows = con.execute(
+            "SELECT s.code FROM stocks s "
+            "WHERE NOT EXISTS ("
+            "  SELECT 1 FROM stock_daily_quotes q "
+            "  WHERE q.code = s.code AND q.trade_date = ?"
+            ") "
+            "ORDER BY s.code",
+            (day,),
+        ).fetchall()
+    finally:
+        con.close()
+    return [r["code"] for r in rows]
 
 
 def sync_one(sess: requests.Session, code: str, retries: int = 2) -> tuple[int, dict | str]:
@@ -104,8 +98,6 @@ def sync_one(sess: requests.Session, code: str, retries: int = 2) -> tuple[int, 
 
 
 def main() -> None:
-    if not TOKEN:
-        sys.exit("error: pass JWT via STOCKIT_TOKEN env or argv[1]")
     retry_missing = "--retry-missing" in sys.argv
     if retry_missing:
         codes = fetch_missing_codes(START_DATE)
@@ -117,7 +109,7 @@ def main() -> None:
     print(f"base={BASE}")
 
     sess = requests.Session()
-    sess.headers.update({"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"})
+    sess.headers.update({"Content-Type": "application/json"})
 
     ok = empty = fail = total_upserted = 0
     failures: list[tuple[str, str]] = []

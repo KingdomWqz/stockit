@@ -39,3 +39,7 @@ Thumbs.db
 # Terminal logs
 typescript
 server/data/
+
+# Local SQLite database files (WAL/SHM included)
+server/data/*.db
+server/data/*.db-*

@@ -65,7 +65,7 @@ export default function KlineChart({ data }: KlineChartProps) {
     const ma60 = calcMA(data, 60);
 
     const maConfigs: [ReturnType<typeof calcMA>, string][] = [
-      [ma5, '#f5f5f5'],
+      [ma5, '#3b82f6'],
       [ma10, '#fbbf24'],
       [ma20, '#a855f7'],
       [ma60, '#22c55e'],
